@@ -3,4 +3,3 @@ opencv-python-headless
 mediapipe
 numpy
 pandas
-pyopengl
