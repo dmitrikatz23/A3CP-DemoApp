@@ -266,43 +266,43 @@ st.title("A3CP: Personalised Communication Mapping Interface")
 st.markdown("Define an action, demonstrate it via webcam, and train a machine learning model.")
 
 # JavaScript to request camera permissions
-st.components.v1.html("""
-<script>
-    navigator.mediaDevices.getUserMedia({ video: true })
-    .then(function(stream) {
-        document.body.innerHTML += "<p style='color: green;'>Camera access granted!</p>";
-    })
-    .catch(function(err) {
-        document.body.innerHTML += "<p style='color: red;'>Camera access denied or unavailable. Please check permissions and try again.</p>";
-        console.error("Camera access error:", err);
-    });
-</script>
-""")
+#st.components.v1.html("""
+#<script>
+#    navigator.mediaDevices.getUserMedia({ video: true })
+#    .then(function(stream) {
+#        document.body.innerHTML += "<p style='color: green;'>Camera access granted!</p>";
+#    })
+#    .catch(function(err) {
+#        document.body.innerHTML += "<p style='color: red;'>Camera access denied or unavailable. Please check permissions and try again.</p>";
+#        console.error("Camera access error:", err);
+#    });
+#</script>
+#""")
 
 # check webcam
-def check_camera_access():
+#def check_camera_access():
     # The original code that checks webcam with OpenCV:
     # (We keep it, but you might not need it once using WebRTC)
-    cap = cv2.VideoCapture(0) # attempt to access webcam
-    if not cap.isOpened():
-        st.error('webcam is not accessible. please check browser and system permissions')
-    else:
-        st.success ('webcam is accessible')
-        cap.release()
+    #cap = cv2.VideoCapture(0) # attempt to access webcam
+    #if not cap.isOpened():
+    #    st.error('webcam is not accessible. please check browser and system permissions')
+    #else:
+    #    st.success ('webcam is accessible')
+     #   cap.release()
 
-st.title('webcam permission test')
+#st.title('webcam permission test')
 
-if st.button('check Webcam'):
-    check_camera_access()
+#if st.button('check Webcam'):
+    #check_camera_access()
 
 # ---------------------------
 # NEW: webrtc_streamer logic
 # ---------------------------
 class WebRTCHolisticProcessor(VideoProcessorBase):
-    """
-    Replaces direct OpenCV loops. We'll store frames for recording
-    and process them with your 'process_frame' function.
-    """
+    #"""
+    #Replaces direct OpenCV loops. We'll store frames for recording
+   # and process them with your 'process_frame' function.
+   # """
     def __init__(self):
         self.is_recording = False
         self.recorded_frames = []
