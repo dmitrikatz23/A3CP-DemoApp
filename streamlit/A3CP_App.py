@@ -9,8 +9,10 @@ import os
 from datetime import datetime
 from streamlit_webrtc import webrtc_streamer, VideoProcessorBase
 
-# Set the page configuration
-st.set_page_config(layout="wide")
+# ---------------------------
+# set the page configuration
+# ---------------------------
+st.set_page_config(layout='wide')
 
 mp_drawing = mp.solutions.drawing_utils
 mp_holistic = mp.solutions.holistic
@@ -22,35 +24,31 @@ num_pose_landmarks = 33
 num_hand_landmarks_per_hand = 21
 num_face_landmarks = 468
 
-# Base angle names for one hand
 angle_names_base = [
-    'thumb_mcp', 'thumb_ip', 
+    'thumb_mcp', 'thumb_ip',
     'index_mcp', 'index_pip', 'index_dip',
-    'middle_mcp', 'middle_pip', 'middle_dip', 
-    'ring_mcp', 'ring_pip', 'ring_dip', 
+    'middle_mcp', 'middle_pip', 'middle_dip',
+    'ring_mcp', 'ring_pip', 'ring_dip',
     'little_mcp', 'little_pip', 'little_dip'
 ]
 
-# Generate angle names for left and right hands
 left_hand_angle_names = [f'left_{name}' for name in angle_names_base]
 right_hand_angle_names = [f'right_{name}' for name in angle_names_base]
 
-# Generate coordinate labels for pose, hands, and face
 pose_landmarks = [f'pose_{axis}{i}' for i in range(1, num_pose_landmarks+1) for axis in ['x', 'y', 'v']]
 left_hand_landmarks = [f'left_hand_{axis}{i}' for i in range(1, num_hand_landmarks_per_hand+1) for axis in ['x', 'y', 'v']]
 right_hand_landmarks = [f'right_hand_{axis}{i}' for i in range(1, num_hand_landmarks_per_hand+1) for axis in ['x', 'y', 'v']]
 face_landmarks = [f'face_{axis}{i}' for i in range(1, num_face_landmarks+1) for axis in ['x', 'y', 'v']]
 
-# Assemble the header
 @st.cache_data
 def load_csv_header():
     return (
-        ['class', 'sequence_id'] 
-        + pose_landmarks 
-        + left_hand_landmarks 
-        + left_hand_angle_names 
-        + right_hand_landmarks 
-        + right_hand_angle_names 
+        ['class', 'sequence_id']
+        + pose_landmarks
+        + left_hand_landmarks
+        + left_hand_angle_names
+        + right_hand_landmarks
+        + right_hand_angle_names
         + face_landmarks
     )
 
@@ -73,7 +71,6 @@ def load_mediapipe_model():
         static_image_mode=False  # Optimize for continuous video input
     )
 
-# Load the MediaPipe holistic model once and cache it
 holistic_model = load_mediapipe_model()
 
 def calculate_velocity(landmarks):
@@ -120,10 +117,7 @@ def calculate_angle(a, b, c):
 # Processing and Data Helpers
 # ---------------------------
 def process_frame(frame):
-    """
-    Process a single frame with MediaPipe Holistic.
-    (Retained for your existing logic; also used by HolisticProcessor.)
-    """
+    """Process a single frame with MediaPipe Holistic."""
     # Convert BGR to RGB
     image = cv2.cvtColor(frame, cv2.COLOR_BGR2RGB)
     results = holistic_model.process(image)
@@ -163,11 +157,14 @@ def process_frame(frame):
 
     # Calculate hand angles
     def hand_angles(hand_landmarks):
+        # If the hand is not detected, return an array of 0 angles
         if all((p[0] == 0 and p[1] == 0 and p[2] == 0) for p in hand_landmarks):
             return [0] * len(angle_names_base)
 
         h = {i: hand_landmarks[i] for i in range(len(hand_landmarks))}
-        def pt(i): return [h[i][0], h[i][1]]
+
+        def pt(i):
+            return [h[i][0], h[i][1]]
 
         thumb_mcp = calculate_angle(pt(1), pt(2), pt(3))
         thumb_ip = calculate_angle(pt(2), pt(3), pt(4))
@@ -200,21 +197,21 @@ def process_frame(frame):
     right_hand_angles_data = hand_angles(right_hand_data)
 
     return (
-        image, 
-        pose_data, 
-        left_hand_data, 
-        left_hand_angles_data, 
-        right_hand_data, 
-        right_hand_angles_data, 
+        image,
+        pose_data,
+        left_hand_data,
+        left_hand_angles_data,
+        right_hand_data,
+        right_hand_angles_data,
         face_data
     )
 
 def flatten_landmarks(
-    pose_data, 
-    left_hand_data, 
-    left_hand_angles_data, 
-    right_hand_data, 
-    right_hand_angles_data, 
+    pose_data,
+    left_hand_data,
+    left_hand_angles_data,
+    right_hand_data,
+    right_hand_angles_data,
     face_data
 ):
     """Flatten all landmark data + angles into a single 1D list."""
@@ -226,11 +223,11 @@ def flatten_landmarks(
     face_flat = [val for landmark in face_data for val in landmark]
 
     return (
-        pose_flat 
-        + left_hand_flat 
-        + left_hand_angles_flat 
-        + right_hand_flat 
-        + right_hand_angles_flat 
+        pose_flat
+        + left_hand_flat
+        + left_hand_angles_flat
+        + right_hand_flat
+        + right_hand_angles_flat
         + face_flat
     )
 
@@ -250,7 +247,7 @@ csv_file = st.session_state["csv_file"]
 @st.cache_data
 def initialize_csv(file_name, header):
     """
-    Overwrites (or creates) the CSV file with a new header 
+    Overwrites (or creates) the CSV file with a new header
     at the start of the session.
     """
     with open(file_name, mode='w', newline='') as f:
@@ -263,52 +260,12 @@ if "csv_initialized" not in st.session_state:
     st.session_state["csv_initialized"] = initialize_csv(csv_file, header)
 
 # ---------------------------
-# WebRTC Video Processor
-# ---------------------------
-class HolisticProcessor(VideoProcessorBase):
-    """
-    This class replaces direct OpenCV capture. It uses webrtc_streamer to receive frames.
-    We'll store processed frames if `is_recording` is True.
-    """
-    def __init__(self):
-        self.is_recording = False
-        self.recorded_frames = []
-
-    def recv(self, frame):
-        # Convert the frame to a numpy array (BGR)
-        img_bgr = frame.to_ndarray(format="bgr24")
-
-        # Use your existing process_frame logic
-        (processed_image,
-         pose_data,
-         left_hand_data,
-         left_hand_angles_data,
-         right_hand_data,
-         right_hand_angles_data,
-         face_data) = process_frame(img_bgr)
-
-        # If recording, save landmark data for each frame
-        if self.is_recording:
-            flattened = flatten_landmarks(
-                pose_data, 
-                left_hand_data, 
-                left_hand_angles_data, 
-                right_hand_data, 
-                right_hand_angles_data, 
-                face_data
-            )
-            self.recorded_frames.append(flattened)
-
-        # Return a new VideoFrame (with drawings) to display
-        return frame.from_ndarray(processed_image, format="bgr24")
-
-# ---------------------------
-# Streamlit Frontend
+# Streamlit and Logic
 # ---------------------------
 st.title("A3CP: Personalised Communication Mapping Interface")
 st.markdown("Define an action, demonstrate it via webcam, and train a machine learning model.")
 
-# JavaScript to request camera permissions (unchanged)
+# JavaScript to request camera permissions
 st.components.v1.html("""
 <script>
     navigator.mediaDevices.getUserMedia({ video: true })
@@ -322,8 +279,10 @@ st.components.v1.html("""
 </script>
 """)
 
-# Check webcam button (still uses OpenCV to check if device is accessible, optional)
+# check webcam
 def check_camera_access():
+    # The original code that checks webcam with OpenCV:
+    # (We keep it, but you might not need it once using WebRTC)
     cap = cv2.VideoCapture(0) # attempt to access webcam
     if not cap.isOpened():
         st.error('webcam is not accessible. please check browser and system permissions')
@@ -333,11 +292,51 @@ def check_camera_access():
 
 st.title('webcam permission test')
 
-if st.button ('check Webcam'):
+if st.button('check Webcam'):
     check_camera_access()
 
-# We set up the webrtc_streamer to capture video
-webrtc_ctx = webrtc_streamer(key="example", video_processor_factory=HolisticProcessor)
+# ---------------------------
+# NEW: webrtc_streamer logic
+# ---------------------------
+class WebRTCHolisticProcessor(VideoProcessorBase):
+    """
+    Replaces direct OpenCV loops. We'll store frames for recording
+    and process them with your 'process_frame' function.
+    """
+    def __init__(self):
+        self.is_recording = False
+        self.recorded_frames = []
+
+    def recv(self, frame):
+        # Convert to numpy array (BGR)
+        img_bgr = frame.to_ndarray(format="bgr24")
+
+        # Use existing 'process_frame' to do Holistic detection + drawing
+        (processed_image,
+         pose_data,
+         left_hand_data,
+         left_hand_angles_data,
+         right_hand_data,
+         right_hand_angles_data,
+         face_data) = process_frame(img_bgr)
+
+        # If recording, save the flattened landmarks
+        if self.is_recording:
+            flattened = flatten_landmarks(
+                pose_data,
+                left_hand_data,
+                left_hand_angles_data,
+                right_hand_data,
+                right_hand_angles_data,
+                face_data
+            )
+            self.recorded_frames.append(flattened)
+
+        # Return processed frame to display
+        return frame.from_ndarray(processed_image, format="bgr24")
+
+# Initialize webrtc_streamer
+webrtc_ctx = webrtc_streamer(key="example", video_processor_factory=WebRTCHolisticProcessor)
 
 # Maintain state
 if 'actions' not in st.session_state:
@@ -362,41 +361,96 @@ with left_col:
         st.success(f"Action '{action_word}' confirmed!")
 
     # ---------------------------
-    # Start/Stop Recording Using WebRTC
+    # ORIGINAL (commented out) CAPTURE LOGIC
+    # (Kept in code, but now replaced by webrtc_streamer)
+    # ---------------------------
+    # if action_word in st.session_state['actions']:
+    #     if st.button("Start Recording", key=f"start_recording_{action_word}"):
+    #         cap = cv2.VideoCapture(0)
+    #         if not cap.isOpened():
+    #             st.error("Cannot open webcam")
+    #         else:
+    #             st.session_state['record_started'] = True
+    #             start_time = time.time()
+    #             all_frames = []
+    #             stop_button_pressed = False
+
+    #             stop_button = st.button("Stop Recording", key=f"stop_recording_{action_word}")
+
+    #             while st.session_state['record_started']:
+    #                 elapsed_time = int(time.time() - start_time)
+    #                 status_bar.text(f"Time Elapsed: {elapsed_time} seconds")
+
+    #                 ret, frame = cap.read()
+    #                 if not ret:
+    #                     st.error("Failed to capture frame")
+    #                     break
+
+    #                 # Process each frame
+    #                 (processed_image,
+    #                  pose_data,
+    #                  left_hand_data,
+    #                  left_hand_angles_data,
+    #                  right_hand_data,
+    #                  right_hand_angles_data,
+    #                  face_data) = process_frame(frame)
+
+    #                 FRAME_WINDOW.image(processed_image, channels="BGR")
+
+    #                 all_frames.append((
+    #                     pose_data,
+    #                     left_hand_data,
+    #                     left_hand_angles_data,
+    #                     right_hand_data,
+    #                     right_hand_angles_data,
+    #                     face_data
+    #                 ))
+
+    #                 # Stop automatically after 10 seconds or when "Stop Recording" is pressed
+    #                 if stop_button or elapsed_time >= 10:
+    #                     st.session_state['actions'][action_word] = all_frames
+    #                     st.session_state['record_started'] = False
+    #                     stop_button_pressed = True
+    #                     break
+
+    #             cap.release()
+    #             FRAME_WINDOW.image([])
+
+    #             if stop_button_pressed:
+    #                 st.success(f"Recording for '{action_word}' saved!")
+    #                 st.info("Camera turned off.")
+
+    # ---------------------------
+    # NEW: Start/Stop Recording with webrtc_streamer
     # ---------------------------
     if action_word in st.session_state['actions'] and webrtc_ctx and webrtc_ctx.state.playing:
         processor = webrtc_ctx.video_processor
 
-        # "Start Recording" button
+        # Start Recording
         if st.button("Start Recording", key=f"start_recording_{action_word}"):
             if processor:
                 processor.is_recording = True
-                processor.recorded_frames = []  # reset
+                processor.recorded_frames = []
                 st.session_state['record_started'] = True
-                st.success("Recording started.")
+                st.success("Recording started via WebRTC!")
 
-        # "Stop Recording" button
+        # Stop Recording
         if st.session_state.get('record_started', False):
-            stop_button = st.button("Stop Recording", key=f"stop_recording_{action_word}")
-            if stop_button and processor:
+            stop_button_new = st.button("Stop Recording", key=f"stop_recording_{action_word}")
+            if stop_button_new and processor:
                 processor.is_recording = False
                 st.session_state['record_started'] = False
-
-                # Save frames from the processor to session_state actions
-                all_frames = processor.recorded_frames
-                st.session_state['actions'][action_word] = all_frames
+                # Copy frames into session state for that action
+                st.session_state['actions'][action_word] = processor.recorded_frames
                 st.success(f"Recording for '{action_word}' saved!")
-                st.info("Recording turned off.")
+                st.info("Camera turned off.")
 
-# ---------------------------
-# Recorded Actions & Keyframe Logic
-# ---------------------------
 st.header("Recorded Actions")
 if st.session_state['actions']:
     all_rows = []
     for action, all_frames in st.session_state['actions'].items():
         if all_frames is not None and len(all_frames) > 1:
-            # Convert to numpy for velocity/acceleration analysis
+            # Flatten each frame’s landmarks are already flattened in recorded_frames
             flat_landmarks_per_frame = np.array(all_frames)
 
             # Identify keyframes based on velocity & acceleration thresholds
@@ -410,8 +464,7 @@ if st.session_state['actions']:
             for kf in keyframes:
                 if kf < len(all_frames):
                     st.session_state['sequence_id'] += 1
-
-                    row_data = all_frames[kf]  # already flattened
+                    row_data = all_frames[kf]
                     row = [action, st.session_state['sequence_id']] + list(row_data)
                     all_rows.append(row)
 
@@ -419,7 +472,7 @@ if st.session_state['actions']:
     if all_rows:
         with open(csv_file, mode='a', newline='') as f:
             csv_writer = csv.writer(f)
-            csv_writer.writerows(all_rows)  # Append rows instead of rewriting the file
+            csv_writer.writerows(all_rows)  # Append rows instead of rewriting
         st.success(f"All recorded actions appended to '{csv_file}'")
 
         # Display a quick summary of recorded actions
