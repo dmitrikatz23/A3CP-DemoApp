@@ -15,6 +15,7 @@ st.set_page_config(layout = 'wide')
 
 
 
+
 mp_drawing = mp.solutions.drawing_utils
 mp_holistic = mp.solutions.holistic
 
@@ -278,6 +279,21 @@ if "csv_initialized" not in st.session_state:
 st.title("A3CP: Personalised Communication Mapping Interface")
 st.markdown("Define an action, demonstrate it via webcam, and train a machine learning model.")
 
+# JavaScript to request camera permissions
+st.components.v1.html("""
+<script>
+    navigator.mediaDevices.getUserMedia({ video: true })
+    .then(function(stream) {
+        document.body.innerHTML += "<p style='color: green;'>Camera access granted!</p>";
+    })
+    .catch(function(err) {
+        document.body.innerHTML += "<p style='color: red;'>Camera access denied or unavailable. Please check permissions and try again.</p>";
+        console.error("Camera access error:", err);
+    });
+</script>
+""")
+
+
 #check webcam
 def check_camera_access():
     cap = cv2.VideoCapture(0) # attempt to access webcam
@@ -291,6 +307,9 @@ st.title('webcam permission test')
 
 if st.button ('check Webcam'):
     check_camera_access()
+
+
+
 
 # Maintain state
 if 'actions' not in st.session_state:
