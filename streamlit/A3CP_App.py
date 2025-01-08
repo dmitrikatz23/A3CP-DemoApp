@@ -15,9 +15,6 @@ from streamlit_webrtc import webrtc_streamer
 st.set_page_config(layout = 'wide')
 
 
-
-
-
 mp_drawing = mp.solutions.drawing_utils
 mp_holistic = mp.solutions.holistic
 
