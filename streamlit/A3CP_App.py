@@ -8,7 +8,12 @@ import pandas as pd
 import os
 from datetime import datetime
 
-st.set_page_config(layout="wide")
+#set the page configuration
+
+st.set_page_config(layout = 'wide')
+
+
+
 
 mp_drawing = mp.solutions.drawing_utils
 mp_holistic = mp.solutions.holistic
@@ -272,6 +277,20 @@ if "csv_initialized" not in st.session_state:
 
 st.title("A3CP: Personalised Communication Mapping Interface")
 st.markdown("Define an action, demonstrate it via webcam, and train a machine learning model.")
+
+#check webcam
+def check_camera_access():
+    cap = cv2.VideoCapture(0) # attempt to access webcam
+    if not cap.isOpened():
+        st.error('webcam is not accessible. please chec browser and system permissions')
+    else:
+        st.success ('webcam is accessible')
+        cap.release()
+
+st.title('webcam permission test')
+
+if st.button ('check Webcam'):
+    check_camera_access()
 
 # Maintain state
 if 'actions' not in st.session_state:
