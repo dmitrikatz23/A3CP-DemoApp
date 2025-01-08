@@ -7,13 +7,10 @@ import time
 import pandas as pd
 import os
 from datetime import datetime
-from streamlit_webrtc import webrtc_streamer
+from streamlit_webrtc import webrtc_streamer, VideoProcessorBase
 
-
-#set the page configuration
-
-st.set_page_config(layout = 'wide')
-
+# Set the page configuration
+st.set_page_config(layout="wide")
 
 mp_drawing = mp.solutions.drawing_utils
 mp_holistic = mp.solutions.holistic
@@ -62,7 +59,6 @@ header = load_csv_header()
 # ---------------------------
 # Mediapipe & Angle Functions
 # ---------------------------
-
 @st.cache_resource
 def load_mediapipe_model():
     """
@@ -123,9 +119,11 @@ def calculate_angle(a, b, c):
 # ---------------------------
 # Processing and Data Helpers
 # ---------------------------
-
 def process_frame(frame):
-    """Process a single frame with MediaPipe Holistic."""
+    """
+    Process a single frame with MediaPipe Holistic.
+    (Retained for your existing logic; also used by HolisticProcessor.)
+    """
     # Convert BGR to RGB
     image = cv2.cvtColor(frame, cv2.COLOR_BGR2RGB)
     results = holistic_model.process(image)
@@ -165,14 +163,11 @@ def process_frame(frame):
 
     # Calculate hand angles
     def hand_angles(hand_landmarks):
-        # If the hand is not detected, return an array of 0 angles
         if all((p[0] == 0 and p[1] == 0 and p[2] == 0) for p in hand_landmarks):
             return [0] * len(angle_names_base)
 
         h = {i: hand_landmarks[i] for i in range(len(hand_landmarks))}
-
-        def pt(i):
-            return [h[i][0], h[i][1]]
+        def pt(i): return [h[i][0], h[i][1]]
 
         thumb_mcp = calculate_angle(pt(1), pt(2), pt(3))
         thumb_ip = calculate_angle(pt(2), pt(3), pt(4))
@@ -242,17 +237,13 @@ def flatten_landmarks(
 # ---------------------------
 # Create/Initialize CSV
 # ---------------------------
-
-# Ensure the "csv" folder exists
 csv_folder = "csv"
 if not os.path.exists(csv_folder):
     os.makedirs(csv_folder)
 
-# Create a unique CSV file name for this session if not already created
 if "csv_file" not in st.session_state:
     session_start_str = datetime.now().strftime("%Y-%m-%d_%H-%M-%S")
     st.session_state["csv_file"] = os.path.join(csv_folder, f"all_actions_recorded_{session_start_str}.csv")
-
 
 csv_file = st.session_state["csv_file"]
 
@@ -272,13 +263,52 @@ if "csv_initialized" not in st.session_state:
     st.session_state["csv_initialized"] = initialize_csv(csv_file, header)
 
 # ---------------------------
-# Streamlit and Logic
+# WebRTC Video Processor
 # ---------------------------
+class HolisticProcessor(VideoProcessorBase):
+    """
+    This class replaces direct OpenCV capture. It uses webrtc_streamer to receive frames.
+    We'll store processed frames if `is_recording` is True.
+    """
+    def __init__(self):
+        self.is_recording = False
+        self.recorded_frames = []
 
+    def recv(self, frame):
+        # Convert the frame to a numpy array (BGR)
+        img_bgr = frame.to_ndarray(format="bgr24")
+
+        # Use your existing process_frame logic
+        (processed_image,
+         pose_data,
+         left_hand_data,
+         left_hand_angles_data,
+         right_hand_data,
+         right_hand_angles_data,
+         face_data) = process_frame(img_bgr)
+
+        # If recording, save landmark data for each frame
+        if self.is_recording:
+            flattened = flatten_landmarks(
+                pose_data, 
+                left_hand_data, 
+                left_hand_angles_data, 
+                right_hand_data, 
+                right_hand_angles_data, 
+                face_data
+            )
+            self.recorded_frames.append(flattened)
+
+        # Return a new VideoFrame (with drawings) to display
+        return frame.from_ndarray(processed_image, format="bgr24")
+
+# ---------------------------
+# Streamlit Frontend
+# ---------------------------
 st.title("A3CP: Personalised Communication Mapping Interface")
 st.markdown("Define an action, demonstrate it via webcam, and train a machine learning model.")
 
-# JavaScript to request camera permissions
+# JavaScript to request camera permissions (unchanged)
 st.components.v1.html("""
 <script>
     navigator.mediaDevices.getUserMedia({ video: true })
@@ -292,12 +322,11 @@ st.components.v1.html("""
 </script>
 """)
 
-
-#check webcam
+# Check webcam button (still uses OpenCV to check if device is accessible, optional)
 def check_camera_access():
     cap = cv2.VideoCapture(0) # attempt to access webcam
     if not cap.isOpened():
-        st.error('webcam is not accessible. please chec browser and system permissions')
+        st.error('webcam is not accessible. please check browser and system permissions')
     else:
         st.success ('webcam is accessible')
         cap.release()
@@ -307,8 +336,8 @@ st.title('webcam permission test')
 if st.button ('check Webcam'):
     check_camera_access()
 
-
-
+# We set up the webrtc_streamer to capture video
+webrtc_ctx = webrtc_streamer(key="example", video_processor_factory=HolisticProcessor)
 
 # Maintain state
 if 'actions' not in st.session_state:
@@ -332,94 +361,48 @@ with left_col:
         st.session_state['actions'][action_word] = None
         st.success(f"Action '{action_word}' confirmed!")
 
-    if action_word in st.session_state['actions']:
+    # ---------------------------
+    # Start/Stop Recording Using WebRTC
+    # ---------------------------
+    if action_word in st.session_state['actions'] and webrtc_ctx and webrtc_ctx.state.playing:
+        processor = webrtc_ctx.video_processor
+
+        # "Start Recording" button
         if st.button("Start Recording", key=f"start_recording_{action_word}"):
-            cap = cv2.VideoCapture(0)
-            if not cap.isOpened():
-                st.error("Cannot open webcam")
-            else:
+            if processor:
+                processor.is_recording = True
+                processor.recorded_frames = []  # reset
                 st.session_state['record_started'] = True
-                start_time = time.time()
-                all_frames = []
-                stop_button_pressed = False
+                st.success("Recording started.")
 
-                stop_button = st.button("Stop Recording", key=f"stop_recording_{action_word}")
+        # "Stop Recording" button
+        if st.session_state.get('record_started', False):
+            stop_button = st.button("Stop Recording", key=f"stop_recording_{action_word}")
+            if stop_button and processor:
+                processor.is_recording = False
+                st.session_state['record_started'] = False
 
-                while st.session_state['record_started']:
-                    elapsed_time = int(time.time() - start_time)
-                    status_bar.text(f"Time Elapsed: {elapsed_time} seconds")
+                # Save frames from the processor to session_state actions
+                all_frames = processor.recorded_frames
+                st.session_state['actions'][action_word] = all_frames
+                st.success(f"Recording for '{action_word}' saved!")
+                st.info("Recording turned off.")
 
-                    ret, frame = cap.read()
-                    if not ret:
-                        st.error("Failed to capture frame")
-                        break
-
-                    # Process each frame
-                    (processed_image,
-                     pose_data,
-                     left_hand_data,
-                     left_hand_angles_data,
-                     right_hand_data,
-                     right_hand_angles_data,
-                     face_data) = process_frame(frame)
-
-                    FRAME_WINDOW.image(processed_image, channels="BGR")
-
-                    all_frames.append((
-                        pose_data, 
-                        left_hand_data, 
-                        left_hand_angles_data, 
-                        right_hand_data, 
-                        right_hand_angles_data, 
-                        face_data
-                    ))
-
-                    # Stop automatically after 10 seconds or when "Stop Recording" is pressed
-                    if stop_button or elapsed_time >= 10:
-                        st.session_state['actions'][action_word] = all_frames
-                        st.session_state['record_started'] = False
-                        stop_button_pressed = True
-                        break
-
-                cap.release()
-                FRAME_WINDOW.image([])
-
-                if stop_button_pressed:
-                    st.success(f"Recording for '{action_word}' saved!")
-                    st.info("Camera turned off.")
-
+# ---------------------------
+# Recorded Actions & Keyframe Logic
+# ---------------------------
 st.header("Recorded Actions")
 if st.session_state['actions']:
     all_rows = []
     for action, all_frames in st.session_state['actions'].items():
         if all_frames is not None and len(all_frames) > 1:
-            # Flatten each frame’s landmarks
-            flat_landmarks_per_frame = []
-            for f in all_frames:
-                (pose_data, 
-                 left_hand_data, 
-                 left_hand_angles_data, 
-                 right_hand_data, 
-                 right_hand_angles_data, 
-                 face_data) = f
-
-                flat_landmarks_per_frame.append(
-                    flatten_landmarks(
-                        pose_data, 
-                        left_hand_data, 
-                        left_hand_angles_data,
-                        right_hand_data, 
-                        right_hand_angles_data, 
-                        face_data
-                    )
-                )
-
-            flat_landmarks_per_frame = np.array(flat_landmarks_per_frame)
+            # Convert to numpy for velocity/acceleration analysis
+            flat_landmarks_per_frame = np.array(all_frames)
 
             # Identify keyframes based on velocity & acceleration thresholds
             keyframes = identify_keyframes(
-                flat_landmarks_per_frame, 
-                velocity_threshold=0.1, 
+                flat_landmarks_per_frame,
+                velocity_threshold=0.1,
                 acceleration_threshold=0.1
             )
 
@@ -427,24 +410,11 @@ if st.session_state['actions']:
             for kf in keyframes:
                 if kf < len(all_frames):
                     st.session_state['sequence_id'] += 1
-                    (pose_data, 
-                     left_hand_data, 
-                     left_hand_angles_data, 
-                     right_hand_data, 
-                     right_hand_angles_data, 
-                     face_data) = all_frames[kf]
-                    
-                    row_data = flatten_landmarks(
-                        pose_data, 
-                        left_hand_data, 
-                        left_hand_angles_data, 
-                        right_hand_data, 
-                        right_hand_angles_data, 
-                        face_data
-                    )
-                    row = [action, st.session_state['sequence_id']] + row_data
+
+                    row_data = all_frames[kf]  # already flattened
+                    row = [action, st.session_state['sequence_id']] + list(row_data)
                     all_rows.append(row)
-                    
+
     # Append new rows to the CSV file for this session
     if all_rows:
         with open(csv_file, mode='a', newline='') as f:
