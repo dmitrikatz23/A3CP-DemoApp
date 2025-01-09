@@ -9,20 +9,18 @@ st.title('Continuous Webcam Check using Streamlit-WeRTC')
 
 # Instructions
 st.write(
-    "This app uses `streamlit-webrtc` to continuously access your webcam. "
-    "Ensure your browser permissions allow camera access."
+    "This app keeps your webcam active continuously using `streamlit-webrtc`. "
+    "Ensure you allow camera access when prompted by your browser."
 )
 
-# Webcam streaming function
-def continuous_camera_check():
-    st.info("Your webcam is active. Close the app or browser tab to stop the feed.")
-    webrtc_streamer(key="camera-check", video_transformer_factory=None)
-
-# Button to start continuous webcam check
-if st.button('Start Webcam Check'):
-    continuous_camera_check()
+# Continuous webcam feed
+webrtc_streamer(
+    key="camera-continuous", 
+    video_transformer_factory=None,
+    media_stream_constraints={"video": True, "audio": False},  # Enables only video
+)
 
 # Footer message
 st.write(
-    "Your webcam will remain active until you close the browser tab or stop the Streamlit app."
+    "Your webcam feed will remain active until you stop the Streamlit app or close the browser tab."
 )
