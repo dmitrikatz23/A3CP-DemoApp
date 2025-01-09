@@ -1,6 +1,7 @@
 streamlit==1.41.1
-opencv-python-headless==4.10.0.84
+opencv-python-headless==4.9.0.60  # Known to work with older numpy versions
 mediapipe==0.10.20
-numpy==2.2.1
+numpy==1.24.3  # Works for streamlit, mediapipe, and opencv-python-headless
 pandas==2.2.3
 av==14.0.1
+
