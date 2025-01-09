@@ -1,7 +1,11 @@
-streamlit
+#streamlit
 opencv-python-headless
 mediapipe
 numpy
 pandas
-streamlit-webrtc
+#streamlit-webrtc
 av
+time
+streamlit==1.25.0
+streamlit-webrtc==0.44.1
+av==10.0.0
