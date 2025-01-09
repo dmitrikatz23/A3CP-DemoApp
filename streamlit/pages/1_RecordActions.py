@@ -11,7 +11,7 @@ st.title("Start Live Video Feed")
 # Instructions
 st.write(
     "Click the 'Start' button below to access and display your webcam feed. "
-    "Ensure your browser permissions allow access to your webcam."
+    "Click stop to turn it off"
 )
 
 # Define a custom video transformer class
@@ -23,17 +23,29 @@ class VideoTransformer(VideoTransformerBase):
         """
         return frame
 
-# Button to start the webcam feed
+#iniitalize session state for video feed toggle
+if 'feed_active' not in st.session_state:
+    st.session_state['feed_active'] = False
+
 if st.button('Start'):
-    # Show the live video feed
-    st.info("Webcam feed started. Close the browser tab or stop the app to stop the feed.")
+    st.session_state['feed_active'] = True
+
+if st.button ('Stop'):
+    st.session_state ['feed_active'] = False
+
+
+# display the video feed if active
+if st.button['feed_active']:
+    st.info ("webcam is active")
     webrtc_streamer(
         key="live-video-feed",
         video_transformer_factory=VideoTransformer,  # Processes video frames
         media_stream_constraints={"video": True, "audio": False},  # Access only the video
     )
+else:
+    st.info("Webcam is inactive. Click 'Start' to activate.")
 
 # Footer message
 st.write(
-    "Your webcam feed will remain active as long as the app is running and the tab is open."
+    "Toggle the feed using the Start/Stop buttons."
 )
