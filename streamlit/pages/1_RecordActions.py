@@ -24,32 +24,36 @@ class VideoTransformer(VideoTransformerBase):
         """
         return frame
 
-# Initialize session state to track feed activity
+# Initialize session state for feed activity and start time
 if "feed_active" not in st.session_state:
     st.session_state["feed_active"] = False
 if "start_time" not in st.session_state:
     st.session_state["start_time"] = None
 
 # Start button logic
-if st.button("Start"):
+if st.button("Start") and not st.session_state["feed_active"]:
     st.session_state["feed_active"] = True
     st.session_state["start_time"] = time.time()  # Record the start time
 
 # Display the video feed if active and within the 10-second limit
 if st.session_state["feed_active"]:
-    elapsed_time = time.time() - st.session_state["start_time"]
-    if elapsed_time <= 10:
-        st.info(f"Webcam feed is active. Time remaining: {10 - int(elapsed_time)} seconds.")
-        webrtc_streamer(
-            key="live-video-feed",
-            video_transformer_factory=VideoTransformer,
-            media_stream_constraints={"video": True, "audio": False},  # Video only
-        )
+    if st.session_state["start_time"] is not None:
+        elapsed_time = time.time() - st.session_state["start_time"]
+        if elapsed_time <= 10:
+            st.info(f"Webcam feed is active. Time remaining: {10 - int(elapsed_time)} seconds.")
+            webrtc_streamer(
+                key="live-video-feed",
+                video_transformer_factory=VideoTransformer,
+                media_stream_constraints={"video": True, "audio": False},  # Video only
+            )
+        else:
+            st.session_state["feed_active"] = False  # Stop the feed after 10 seconds
+            st.session_state["start_time"] = None
+            st.info("The webcam feed has stopped automatically after 10 seconds.")
     else:
-        st.session_state["feed_active"] = False  # Stop the feed after 10 seconds
-        st.session_state["start_time"] = None
-        st.info("The webcam feed has stopped automatically after 10 seconds.")
-
-# Display a message if the feed is inactive
-if not st.session_state["feed_active"]:
+        st.warning("An error occurred: Start time is not set.")
+else:
     st.info("Webcam feed is inactive. Click 'Start' to activate.")
+
+# Footer
+st.write("The video feed will remain active for 10 seconds after pressing 'Start'.")
