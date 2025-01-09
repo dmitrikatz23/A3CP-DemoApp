@@ -24,19 +24,21 @@ class VideoTransformer(VideoTransformerBase):
         """
         return frame
 
-# Initialize session state for feed activity and start time
+# Initialize session state
 if "feed_active" not in st.session_state:
     st.session_state["feed_active"] = False
 if "start_time" not in st.session_state:
     st.session_state["start_time"] = None
 
 # Start button logic
-if st.button("Start") and not st.session_state["feed_active"]:
-    st.session_state["feed_active"] = True
-    st.session_state["start_time"] = time.time()  # Record the start time
+if st.button("Start"):
+    if not st.session_state["feed_active"]:
+        st.session_state["feed_active"] = True
+        st.session_state["start_time"] = time.time()  # Record the current time
 
 # Display the video feed if active and within the 10-second limit
 if st.session_state["feed_active"]:
+    # Ensure start_time is set
     if st.session_state["start_time"] is not None:
         elapsed_time = time.time() - st.session_state["start_time"]
         if elapsed_time <= 10:
@@ -47,11 +49,14 @@ if st.session_state["feed_active"]:
                 media_stream_constraints={"video": True, "audio": False},  # Video only
             )
         else:
-            st.session_state["feed_active"] = False  # Stop the feed after 10 seconds
+            # Stop the feed after 10 seconds
+            st.session_state["feed_active"] = False
             st.session_state["start_time"] = None
             st.info("The webcam feed has stopped automatically after 10 seconds.")
     else:
-        st.warning("An error occurred: Start time is not set.")
+        # Fail-safe: Reset state if start_time is unexpectedly None
+        st.session_state["feed_active"] = False
+        st.warning("An unexpected error occurred. Please click 'Start' again.")
 else:
     st.info("Webcam feed is inactive. Click 'Start' to activate.")
 
