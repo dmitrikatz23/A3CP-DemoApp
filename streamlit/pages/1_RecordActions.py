@@ -1,5 +1,6 @@
 import streamlit as st
 from streamlit_webrtc import webrtc_streamer, VideoTransformerBase
+import av
 
 # Set the page configuration
 st.set_page_config(layout='wide')
@@ -9,20 +10,23 @@ st.title('Live video feed using Streamlit-WeRTC')
 
 # Instructions
 st.write(
-    "This app demonstrates a live video feed using `streamlit-webrtc`. "
-    "Ensure you allow camera access when prompted by your browser."
+    "Click the 'Start' button to access and display your webcam feed. "
+    "Ensure your brwoser permissions allow access to your webcam."
 )
 
 #define a custom video transformer class
 
 class VideoTransformer (VideoTransformerBase):
-    def transform(self, frame):
+    def transform(self, frame: av.VideoFrame) -> av.VideoFrame:
         #receives video frame and returns unchanged
         return frame
     
 
-# Start the live video feed
-webrtc_streamer(
+# Button to start the webcam feed
+
+if st.button('Start'):
+    #show the live video feed
+    webrtc_streamer(
     key="live-video-feed", 
     video_transformer_factory=VideoTransformer,
     media_stream_constraints={"video": True, "audio": False},  # Enables only video
