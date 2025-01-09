@@ -3,4 +3,6 @@ opencv-python-headless
 mediapipe
 numpy
 pandas
-streamlit-webrtc
+#streamlit-webrtc
+streamlit==1.25.0
+streamlit-webrtc==0.44.1
