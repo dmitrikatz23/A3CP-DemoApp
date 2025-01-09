@@ -31,7 +31,7 @@ col1,col2 = st.columns(2)
 
 with col1:
     if st.button("Start"):
-        st.session["feed_active"] = True
+        st.session_state["feed_active"] = True
 
 with col2:
     if st.button("Stop"):
