@@ -6,12 +6,10 @@ import av
 st.set_page_config(layout="wide")
 
 # Title of the app
-st.title("Live Video Feed with Toggle Button")
+st.title("Live Video Feed")
 
 # Instructions
-st.write(
-    "Click the 'Start/Stop' button to toggle the webcam feed."
-)
+st.write("Click the 'Start' button below to activate your webcam feed.")
 
 # Define a custom video transformer class
 class VideoTransformer(VideoTransformerBase):
@@ -22,24 +20,24 @@ class VideoTransformer(VideoTransformerBase):
         """
         return frame
 
-# Initialize session state for the video feed
-if "feed_active" not in st.session_state:
-    st.session_state["feed_active"] = False
+# Initialize session state to track if the feed has started
+if "feed_started" not in st.session_state:
+    st.session_state["feed_started"] = False
 
-# Toggle button logic
-if st.button("Start/Stop"):
-    st.session_state["feed_active"] = not st.session_state["feed_active"]  # Toggle state
+# Start button
+if st.button("Start") and not st.session_state["feed_started"]:
+    st.session_state["feed_started"] = True  # Mark feed as started
 
-# Display the video feed if active
-if st.session_state["feed_active"]:
-    st.info("Webcam feed is active. Click 'Start/Stop' to deactivate.")
+# Display the video feed if started
+if st.session_state["feed_started"]:
+    st.info("Webcam feed is active. Close the browser tab or app to stop.")
     webrtc_streamer(
         key="live-video-feed",
         video_transformer_factory=VideoTransformer,
         media_stream_constraints={"video": True, "audio": False},  # Video only
     )
 else:
-    st.info("Webcam feed is inactive. Click 'Start/Stop' to activate.")
+    st.info("Webcam feed is inactive. Click 'Start' to activate.")
 
 # Footer
-st.write("Use the 'Start/Stop' button above to toggle the webcam feed.")
+st.write("The video feed will remain active until the app is stopped.")
