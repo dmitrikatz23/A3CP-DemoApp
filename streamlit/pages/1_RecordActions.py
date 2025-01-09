@@ -24,19 +24,19 @@ class VideoTransformer(VideoTransformerBase):
         return frame
 
 #iniitalize session state for video feed toggle
-if 'feed_active' not in st.session_state:
-    st.session_state['feed_active'] = False
+if "feed_active" not in st.session_state:
+    st.session_state["feed_active"] = False
 
-if st.button('Start'):
-    st.session_state['feed_active'] = True
+if st.button("Start"):
+    st.session_state["feed_active"] = True
 
-if st.button ('Stop'):
-    st.session_state ['feed_active'] = False
+if st.button ("Stop"):
+    st.session_state ["feed_active"] = False
 
 
 # display the video feed if active
-if st.button['feed_active']:
-    st.info ("webcam is active")
+if st.session_state["feed_active"]:
+    st.info ("webcam feed is active")
     webrtc_streamer(
         key="live-video-feed",
         video_transformer_factory=VideoTransformer,  # Processes video frames
