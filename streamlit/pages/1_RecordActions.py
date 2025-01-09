@@ -5,22 +5,24 @@ from streamlit_webrtc import webrtc_streamer
 st.set_page_config(layout='wide')
 
 # Title of the app
-st.title('Webcam Permission Test using Streamlit-WeRTC')
+st.title('Continuous Webcam Check using Streamlit-WeRTC')
 
 # Instructions
 st.write(
-    "This app uses `streamlit-webrtc` to access your webcam. "
+    "This app uses `streamlit-webrtc` to continuously access your webcam. "
     "Ensure your browser permissions allow camera access."
 )
 
-# Webcam permission check using streamlit-webrtc
-def check_camera_access():
-    st.info("Press the 'Start' button below to test webcam access.")
-    webrtc_streamer(key="camera-test")
+# Webcam streaming function
+def continuous_camera_check():
+    st.info("Your webcam is active. Close the app or browser tab to stop the feed.")
+    webrtc_streamer(key="camera-check", video_transformer_factory=None)
 
-# Button to test webcam
-if st.button('Check Webcam'):
-    check_camera_access()
+# Button to start continuous webcam check
+if st.button('Start Webcam Check'):
+    continuous_camera_check()
 
 # Footer message
-st.write("If the camera feed is displayed above, your webcam is accessible!")
+st.write(
+    "Your webcam will remain active until you close the browser tab or stop the Streamlit app."
+)
