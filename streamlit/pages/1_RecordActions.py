@@ -27,12 +27,15 @@ class VideoTransformer(VideoTransformerBase):
 if "feed_active" not in st.session_state:
     st.session_state["feed_active"] = False
 
-if st.button("Start"):
-    st.session_state["feed_active"] = True
+col1,col2 = st.columns(2)
 
-if st.button ("Stop"):
-    st.session_state ["feed_active"] = False
+with col1:
+    if st.button("Start"):
+        st.session["feed_active"] = True
 
+with col2:
+    if st.button("Stop"):
+        st.session_state["feed_active"]= False
 
 # display the video feed if active
 if st.session_state["feed_active"]:
