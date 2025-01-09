@@ -1,42 +1,26 @@
 import streamlit as st
-import csv
-import numpy as np
-import cv2
-import mediapipe as mp
-import time
-import pandas as pd
-import os
-from datetime import datetime
 from streamlit_webrtc import webrtc_streamer
 
-#set the page configuration
-st.set_page_config(layout = 'wide')
+# Set the page configuration
+st.set_page_config(layout='wide')
 
-# JavaScript to request camera permissions
-st.components.v1.html("""
-<script>
-    navigator.mediaDevices.getUserMedia({ video: true })
-    .then(function(stream) {
-        document.body.innerHTML += "<p style='color: green;'>Camera access granted!</p>";
-    })
-    .catch(function(err) {
-        document.body.innerHTML += "<p style='color: red;'>Camera access denied or unavailable. Please check permissions and try again.</p>";
-        console.error("Camera access error:", err);
-    });
-</script>
-""")
+# Title of the app
+st.title('Webcam Permission Test using Streamlit-WeRTC')
 
+# Instructions
+st.write(
+    "This app uses `streamlit-webrtc` to access your webcam. "
+    "Ensure your browser permissions allow camera access."
+)
 
-#check webcam
+# Webcam permission check using streamlit-webrtc
 def check_camera_access():
-    cap = cv2.VideoCapture(0) # attempt to access webcam
-    if not cap.isOpened():
-        st.error('webcam is not accessible. please chec browser and system permissions')
-    else:
-        st.success ('webcam is accessible')
-        cap.release()
+    st.info("Press the 'Start' button below to test webcam access.")
+    webrtc_streamer(key="camera-test")
 
-st.title('webcam permission test')
-
-if st.button ('check Webcam'):
+# Button to test webcam
+if st.button('Check Webcam'):
     check_camera_access()
+
+# Footer message
+st.write("If the camera feed is displayed above, your webcam is accessible!")
