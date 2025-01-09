@@ -4,3 +4,4 @@ mediapipe
 numpy
 pandas
 streamlit-webrtc
+av
