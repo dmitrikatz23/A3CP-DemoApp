@@ -1,20 +1,26 @@
 import streamlit as st
-from streamlit_webrtc import webrtc_streamer, VideoTransformerBase
+from streamlit_webrtc import webrtc_streamer, VideoProcessorBase, WebRtcMode
 
-# Define a custom video transformer
-class VideoTransformer(VideoTransformerBase):
-    def transform(self, frame):
-        # Perform any processing on the video frames here if needed
+class VideoProcessor(VideoProcessorBase):
+    def recv(self, frame):
+        # Perform any processing on the video frames here
         img = frame.to_ndarray(format="bgr24")
-        return img
+        return frame.from_ndarray(img, format="bgr24")
 
-# Streamlit app
 def main():
+    import streamlit as st
     st.title("Video Streaming App with Streamlit-WebRTC")
 
     st.write("Click the 'Start' button to begin video streaming.")
-    # Start the video stream
-    webrtc_streamer(key="example", video_transformer_factory=VideoTransformer)
+    # Update to use video_processor_factory
+    webrtc_streamer(
+        key="example",
+        mode=WebRtcMode.SENDRECV,
+        rtc_configuration={
+            "iceServers": [{"urls": ["stun:stun.l.google.com:19302"]}]
+        },
+        video_processor_factory=VideoProcessor,  # Updated here
+    )
 
 if __name__ == "__main__":
     main()
