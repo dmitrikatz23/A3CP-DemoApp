@@ -14,13 +14,13 @@ def main():
     st.write("Click the 'Start' button to begin video streaming.")
     # Update to use video_processor_factory
     webrtc_streamer(
-        key="example",
-        mode=WebRtcMode.SENDRECV,
-        rtc_configuration={
-            "iceServers": [{"urls": ["stun:stun.l.google.com:19302"]}]
-        },
-        video_processor_factory=VideoProcessor,  # Updated here
-    )
+    key="unique_key",  # Change "unique_key" for each instance if necessary
+    mode=WebRtcMode.SENDRECV,
+    rtc_configuration={
+        "iceServers": [{"urls": ["stun:stun1.l.google.com:19302"]}]
+    },
+    video_processor_factory=VideoProcessor,
+)
 
 if __name__ == "__main__":
     main()
