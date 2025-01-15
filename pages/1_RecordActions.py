@@ -14,27 +14,17 @@ st.set_page_config(page_title="Record Actions", page_icon="🎥")
 st.title("Record Actions")
 st.info("This application uses WebRTC to stream and process video in real-time.")
 
-# Define the video frame callback function
 def video_frame_callback(frame: av.VideoFrame) -> av.VideoFrame:
-    """
-    Process each video frame from the webcam.
+    # Log function calls for debugging
+    print("Processing frame...")
 
-    Parameters:
-    - frame (av.VideoFrame): The input video frame.
-
-    Returns:
-    - av.VideoFrame: The processed video frame.
-    """
-    # Convert the video frame to a NumPy array
     img = frame.to_ndarray(format="bgr24")
+    img = cv2.flip(img, 1)  # Mirror the image
 
-    # Flip the image horizontally for a mirrored view
-    img = cv2.flip(img, 1)
-
-    # Optional: Add some text to the video frame
+    # Add a message to indicate that the frame is being processed
     cv2.putText(
         img,
-        "Recording in Progress",
+        "Processing Frame",
         (50, 50),
         cv2.FONT_HERSHEY_SIMPLEX,
         1,
@@ -43,7 +33,6 @@ def video_frame_callback(frame: av.VideoFrame) -> av.VideoFrame:
         cv2.LINE_AA,
     )
 
-    # Return the processed video frame
     return av.VideoFrame.from_ndarray(img, format="bgr24")
 
 # WebRTC streamer configuration
