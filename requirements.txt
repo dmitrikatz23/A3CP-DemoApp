@@ -4,5 +4,9 @@ mediapipe
 numpy
 pandas
 av
-streamlit-webrtc
+streamlit_webrtc
+pydub
+twilio
+matplotlib
+cvzone
 
