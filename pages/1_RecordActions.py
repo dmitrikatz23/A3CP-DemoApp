@@ -4,7 +4,7 @@ import cv2
 import av
 import streamlit as st
 from streamlit_webrtc import webrtc_streamer, WebRtcMode
-from turn import get_ice_servers  # Import the TURN server utility
+from sample_utils.turn import get_ice_servers  # Import the TURN server utility
 
 # Configure logging
 logger = logging.getLogger(__name__)
