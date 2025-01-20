@@ -300,6 +300,7 @@ if "csv_initialized" not in st.session_state:
 # ---------------------------
 st.title("Record an Action")
 
+# Initialize session state variables
 if 'actions' not in st.session_state:
     st.session_state['actions'] = {}
 if 'record_started' not in st.session_state:
@@ -325,12 +326,18 @@ with left_col:
     if st.button("Confirm Action") and action_word:
         # Clean the action_word to make a valid key
         sanitized_action_word = re.sub(r'[^a-zA-Z0-9_]', '_', action_word.strip())
+
+        # Clear the previous streamer if a new action is confirmed
+        if st.session_state['active_streamer_key']:
+            del st.session_state[st.session_state['active_streamer_key']]  # Remove the old streamer state
+
+        # Set up the new action and streamer key
         st.session_state['actions'][action_word] = None
-        st.session_state['action_confirmed'] = True  # Set action confirmed
-        st.session_state['active_streamer_key'] = f"record-actions-{sanitized_action_word}"  # Update active key
+        st.session_state['action_confirmed'] = True
+        st.session_state['active_streamer_key'] = f"record-actions-{sanitized_action_word}"
         st.success(f"Action '{action_word}' confirmed!")
 
-    # Conditionally show buttons/components based on confirmation
+    # Conditionally show the WebRTC streamer for the confirmed action
     if st.session_state.get('action_confirmed', False):
         # Retrieve the active key for the streamer
         streamer_key = st.session_state['active_streamer_key']
@@ -345,7 +352,6 @@ with left_col:
             video_frame_callback=video_frame_callback,
             async_processing=True,
         )
-
 
 st.header("Recorded Actions")
 if st.session_state['actions']:
