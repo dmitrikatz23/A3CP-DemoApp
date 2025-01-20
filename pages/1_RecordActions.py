@@ -307,6 +307,8 @@ if 'sequence_id' not in st.session_state:
     st.session_state['sequence_id'] = 0
 if 'action_confirmed' not in st.session_state:
     st.session_state['action_confirmed'] = False  # Track whether action is confirmed
+if 'active_streamer_key' not in st.session_state:
+    st.session_state['active_streamer_key'] = None  # Track the active streamer
 
 left_col, right_col = st.columns([1, 2])
 FRAME_WINDOW = right_col.image([])
@@ -326,16 +328,20 @@ with left_col:
 
     # Conditionally show buttons/components based on confirmation
     if st.session_state.get('action_confirmed', False):
-        # Display WebRTC streamer instead of "Start Recording" button
-        st.info("Streaming activated! Perform the action.")
+        # Retrieve the active key for the streamer
+        streamer_key = st.session_state['active_streamer_key']
+
+        # Display WebRTC streamer for the current action
+        st.info(f"Streaming activated! Perform the action: {action_word}")
         webrtc_streamer(
-            key="record-actions",
+            key=streamer_key,  # Ensure the key is unique per action
             mode=WebRtcMode.SENDRECV,
             rtc_configuration={"iceServers": get_ice_servers(), "iceTransportPolicy": "relay"},
             media_stream_constraints={"video": True, "audio": False},
             video_frame_callback=video_frame_callback,
             async_processing=True,
         )
+
 
 st.header("Recorded Actions")
 if st.session_state['actions']:
