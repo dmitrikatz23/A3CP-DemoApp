@@ -428,8 +428,7 @@ if st.session_state['actions']:
                         f"<h4 style='margin:10px; text-align:center; font-family:sans-serif;'>{a}</h4>",
                         unsafe_allow_html=True
                     )
-    else:
-        st.warning("No keyframes were identified. Try recording a clearer gesture.")
+
 else:
     st.info("No actions recorded yet.")
 #
