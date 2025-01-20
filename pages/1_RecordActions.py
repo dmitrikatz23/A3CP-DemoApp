@@ -51,16 +51,6 @@ def video_frame_callback(frame: av.VideoFrame) -> av.VideoFrame:
 
     return av.VideoFrame.from_ndarray(annotated_image, format="bgr24")
 
-webrtc_streamer(
-    key="record-actions",
-    mode=WebRtcMode.SENDRECV,
-    rtc_configuration={"iceServers": get_ice_servers(), "iceTransportPolicy": "relay"},
-    media_stream_constraints={"video": True, "audio": False},
-    video_frame_callback=video_frame_callback,
-    async_processing=True,
-)
-
-
 
 
 # ---------------------------
@@ -425,3 +415,12 @@ if st.session_state['actions']:
 else:
     st.info("No actions recorded yet.")
 
+
+webrtc_streamer(
+    key="record-actions",
+    mode=WebRtcMode.SENDRECV,
+    rtc_configuration={"iceServers": get_ice_servers(), "iceTransportPolicy": "relay"},
+    media_stream_constraints={"video": True, "audio": False},
+    video_frame_callback=video_frame_callback,
+    async_processing=True,
+)
