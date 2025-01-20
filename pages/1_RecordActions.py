@@ -9,6 +9,7 @@ import numpy as np
 import streamlit as st
 from streamlit_webrtc import WebRtcMode, webrtc_streamer
 
+
 #for import from upper folder
 import sys
 from pathlib import Path
@@ -146,7 +147,7 @@ def video_frame_callback(frame: av.VideoFrame) -> av.VideoFrame:
     return av.VideoFrame.from_ndarray(image, format="bgr24")
 
 webrtc_streamer(
-    key="squat-detection",
+    key="record-actions",
     mode=WebRtcMode.SENDRECV,
     rtc_configuration={"iceServers": get_ice_servers(), "iceTransportPolicy": "relay"},
     media_stream_constraints={"video": True, "audio": False},
