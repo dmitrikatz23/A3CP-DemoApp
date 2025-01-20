@@ -416,11 +416,15 @@ else:
     st.info("No actions recorded yet.")
 
 
-webrtc_streamer(
-    key="record-actions",
-    mode=WebRtcMode.SENDRECV,
-    rtc_configuration={"iceServers": get_ice_servers(), "iceTransportPolicy": "relay"},
-    media_stream_constraints={"video": True, "audio": False},
-    video_frame_callback=video_frame_callback,
-    async_processing=True,
-)
+if st.session_state.get('action_confirmed', False):
+    # Dynamically generate a unique key for webrtc_streamer
+    streamer_key = f"record-actions-{action_word.replace(' ', '_')}"  # Unique key based on action
+    st.info("Streaming activated! Perform the action.")
+    webrtc_streamer(
+        key=streamer_key,  # Ensure the key is unique
+        mode=WebRtcMode.SENDRECV,
+        rtc_configuration={"iceServers": get_ice_servers(), "iceTransportPolicy": "relay"},
+        media_stream_constraints={"video": True, "audio": False},
+        video_frame_callback=video_frame_callback,
+        async_processing=True,
+    )
