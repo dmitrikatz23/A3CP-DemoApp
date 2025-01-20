@@ -327,9 +327,11 @@ with left_col:
         # Clean the action_word to make a valid key
         sanitized_action_word = re.sub(r'[^a-zA-Z0-9_]', '_', action_word.strip())
 
-        # Clear the previous streamer if a new action is confirmed
-        if st.session_state['active_streamer_key']:
-            del st.session_state[st.session_state['active_streamer_key']]  # Remove the old streamer state
+        # If there is already an active streamer, clear it
+        if st.session_state.get('active_streamer_key') is not None:
+            # Reset the previous streamer state
+            st.session_state['action_confirmed'] = False
+            del st.session_state[st.session_state['active_streamer_key']]  # Clear state for the old streamer
 
         # Set up the new action and streamer key
         st.session_state['actions'][action_word] = None
