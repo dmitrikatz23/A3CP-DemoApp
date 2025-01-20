@@ -9,17 +9,16 @@ import numpy as np
 import streamlit as st
 from streamlit_webrtc import WebRtcMode, webrtc_streamer
 
-# added imports from previous local-running file
+# Added imports from previous local-running file
 import csv
 import time
 import pandas as pd
 import os
 from datetime import datetime
 
-#for import from upper folder
+# For import from upper folder
 import sys
 from pathlib import Path
-
 # Add the parent directory of the 'pages' folder to sys.path
 sys.path.append(str(Path(__file__).resolve().parent.parent))
 
@@ -50,17 +49,14 @@ angle_names_base = [
     'little_mcp', 'little_pip', 'little_dip'
 ]
 
-# Generate angle names for left and right hands
 left_hand_angle_names = [f'left_{name}' for name in angle_names_base]
 right_hand_angle_names = [f'right_{name}' for name in angle_names_base]
 
-# Generate coordinate labels for pose, hands, and face
 pose_landmarks = [f'pose_{axis}{i}' for i in range(1, num_pose_landmarks+1) for axis in ['x', 'y', 'v']]
 left_hand_landmarks = [f'left_hand_{axis}{i}' for i in range(1, num_hand_landmarks_per_hand+1) for axis in ['x', 'y', 'v']]
 right_hand_landmarks = [f'right_hand_{axis}{i}' for i in range(1, num_hand_landmarks_per_hand+1) for axis in ['x', 'y', 'v']]
 face_landmarks = [f'face_{axis}{i}' for i in range(1, num_face_landmarks+1) for axis in ['x', 'y', 'v']]
 
-# Assemble the header
 @st.cache_data
 def load_csv_header():
     return (
@@ -75,10 +71,6 @@ def load_csv_header():
 
 header = load_csv_header()
 
-# ---------------------------
-# Mediapipe & Angle Functions
-# ---------------------------
-
 @st.cache_resource
 def load_mediapipe_model():
     """
@@ -87,15 +79,12 @@ def load_mediapipe_model():
     return mp.solutions.holistic.Holistic(
         min_detection_confidence=0.5,
         min_tracking_confidence=0.5,
-        static_image_mode=False  # Optimize for real-time video input
+        static_image_mode=False
     )
 
-# Load MediaPipe Holistic model
 holistic_model = load_mediapipe_model()
 
-
 def calculate_velocity(landmarks):
-    """Calculate Euclidean velocity between consecutive frames."""
     velocities = []
     for i in range(1, len(landmarks)):
         velocity = np.linalg.norm(landmarks[i] - landmarks[i-1])
@@ -103,7 +92,6 @@ def calculate_velocity(landmarks):
     return np.array(velocities)
 
 def calculate_acceleration(velocities):
-    """Calculate absolute acceleration between consecutive velocity frames."""
     accelerations = []
     for i in range(1, len(velocities)):
         acceleration = np.abs(velocities[i] - velocities[i-1])
@@ -111,10 +99,6 @@ def calculate_acceleration(velocities):
     return np.array(accelerations)
 
 def identify_keyframes(landmarks, velocity_threshold=0.1, acceleration_threshold=0.1):
-    """
-    Identify frames where velocity or acceleration exceed given thresholds.
-    Returns a list of frame indices considered keyframes.
-    """
     velocities = calculate_velocity(landmarks)
     accelerations = calculate_acceleration(velocities)
     keyframes = []
@@ -124,44 +108,53 @@ def identify_keyframes(landmarks, velocity_threshold=0.1, acceleration_threshold
     return keyframes
 
 def calculate_angle(a, b, c):
-    """Calculate angle (in degrees) at joint b formed by points a, b, c."""
     a = np.array(a)
     b = np.array(b)
     c = np.array(c)
-    radians = np.arctan2(c[1]-b[1], c[0]-b[0]) - np.arctan2(a[1]-b[1], a[0]-b[0])
+    radians = np.arctan2(
+        c[1] - b[1], c[0] - b[0]
+    ) - np.arctan2(
+        a[1] - b[1], a[0] - b[0]
+    )
     angle = np.abs(radians * 180.0 / np.pi)
     if angle > 180.0:
         angle = 360 - angle
     return angle
 
-# ---------------------------
-# Processing and Data Helpers
-# ---------------------------
-
 def process_frame(frame):
-    """Process a single frame with MediaPipe Holistic."""
-    # Convert BGR to RGB
-    image = cv2.cvtColor(frame, cv2.COLOR_BGR2RGB)
-    results = holistic_model.process(image)
-    image = cv2.cvtColor(image, cv2.COLOR_RGB2BGR)
+    """
+    Process a single BGR frame with MediaPipe Holistic.
+    Returns: (annotated_image, pose_data, left_hand_data, left_hand_angles, right_hand_data, right_hand_angles, face_data)
+    """
+    image_rgb = cv2.cvtColor(frame, cv2.COLOR_BGR2RGB)
+    results = holistic_model.process(image_rgb)
+    annotated_image = cv2.cvtColor(image_rgb, cv2.COLOR_RGB2BGR)
 
-    # Draw landmarks for visualization
+    # Draw landmarks
     if results.face_landmarks:
-        mp_drawing.draw_landmarks(image, results.face_landmarks, mp_holistic.FACEMESH_TESSELATION)
+        mp_drawing.draw_landmarks(
+            annotated_image, results.face_landmarks, mp_holistic.FACEMESH_TESSELATION
+        )
     if results.left_hand_landmarks:
-        mp_drawing.draw_landmarks(image, results.left_hand_landmarks, mp_holistic.HAND_CONNECTIONS)
+        mp_drawing.draw_landmarks(
+            annotated_image, results.left_hand_landmarks, mp_holistic.HAND_CONNECTIONS
+        )
     if results.right_hand_landmarks:
-        mp_drawing.draw_landmarks(image, results.right_hand_landmarks, mp_holistic.HAND_CONNECTIONS)
+        mp_drawing.draw_landmarks(
+            annotated_image, results.right_hand_landmarks, mp_holistic.HAND_CONNECTIONS
+        )
     if results.pose_landmarks:
-        mp_drawing.draw_landmarks(image, results.pose_landmarks, mp_holistic.POSE_CONNECTIONS)
+        mp_drawing.draw_landmarks(
+            annotated_image, results.pose_landmarks, mp_holistic.POSE_CONNECTIONS
+        )
 
-    # Extract pose data
+    # Pose data
     if results.pose_landmarks:
         pose_data = [[lm.x, lm.y, lm.visibility] for lm in results.pose_landmarks.landmark]
     else:
         pose_data = [[0, 0, 0]] * num_pose_landmarks
 
-    # Extract left and right hand data
+    # Hand data
     def extract_hand_data(hand_landmarks):
         if hand_landmarks:
             return [[lm.x, lm.y, lm.visibility] for lm in hand_landmarks.landmark]
@@ -171,15 +164,14 @@ def process_frame(frame):
     left_hand_data = extract_hand_data(results.left_hand_landmarks)
     right_hand_data = extract_hand_data(results.right_hand_landmarks)
 
-    # Extract face data
+    # Face data
     if results.face_landmarks:
         face_data = [[lm.x, lm.y, lm.visibility] for lm in results.face_landmarks.landmark]
     else:
         face_data = [[0, 0, 0]] * num_face_landmarks
 
-    # Calculate hand angles
+    # Calculate angles for each hand
     def hand_angles(hand_landmarks):
-        # If the hand is not detected, return an array of 0 angles
         if all((p[0] == 0 and p[1] == 0 and p[2] == 0) for p in hand_landmarks):
             return [0] * len(angle_names_base)
 
@@ -188,21 +180,26 @@ def process_frame(frame):
         def pt(i):
             return [h[i][0], h[i][1]]
 
+        # Example for the thumb
         thumb_mcp = calculate_angle(pt(1), pt(2), pt(3))
-        thumb_ip = calculate_angle(pt(2), pt(3), pt(4))
+        thumb_ip  = calculate_angle(pt(2), pt(3), pt(4))
 
+        # Index
         index_mcp = calculate_angle(pt(0), pt(5), pt(6))
         index_pip = calculate_angle(pt(5), pt(6), pt(7))
         index_dip = calculate_angle(pt(6), pt(7), pt(8))
 
+        # Middle
         middle_mcp = calculate_angle(pt(0), pt(9), pt(10))
         middle_pip = calculate_angle(pt(9), pt(10), pt(11))
         middle_dip = calculate_angle(pt(10), pt(11), pt(12))
 
+        # Ring
         ring_mcp = calculate_angle(pt(0), pt(13), pt(14))
         ring_pip = calculate_angle(pt(13), pt(14), pt(15))
         ring_dip = calculate_angle(pt(14), pt(15), pt(16))
 
+        # Little
         little_mcp = calculate_angle(pt(0), pt(17), pt(18))
         little_pip = calculate_angle(pt(17), pt(18), pt(19))
         little_dip = calculate_angle(pt(18), pt(19), pt(20))
@@ -219,7 +216,7 @@ def process_frame(frame):
     right_hand_angles_data = hand_angles(right_hand_data)
 
     return (
-        image, 
+        annotated_image, 
         pose_data, 
         left_hand_data, 
         left_hand_angles_data, 
@@ -254,45 +251,33 @@ def flatten_landmarks(
     )
 
 # ---------------------------
-# Create/Initialize CSV
+# CSV Setup
 # ---------------------------
-
-# Ensure the "csv" folder exists
 csv_folder = "csv"
 if not os.path.exists(csv_folder):
     os.makedirs(csv_folder)
 
-# Create a unique CSV file name for this session if not already created
 if "csv_file" not in st.session_state:
     session_start_str = datetime.now().strftime("%Y-%m-%d_%H-%M-%S")
     st.session_state["csv_file"] = os.path.join(csv_folder, f"all_actions_recorded_{session_start_str}.csv")
-
 
 csv_file = st.session_state["csv_file"]
 
 @st.cache_data
 def initialize_csv(file_name, header):
-    """
-    Overwrites (or creates) the CSV file with a new header 
-    at the start of the session.
-    """
     with open(file_name, mode='w', newline='') as f:
         csv_writer = csv.writer(f)
         csv_writer.writerow(header)
     return True
 
-# Overwrite (or create) the file with a header at the start of each new session
 if "csv_initialized" not in st.session_state:
     st.session_state["csv_initialized"] = initialize_csv(csv_file, header)
 
 # ---------------------------
-# Streamlit and Logic
+# Streamlit & Recording Logic
 # ---------------------------
+st.title("Record and Action")
 
-st.title("A3CP: Personalised Communication Mapping Interface")
-st.markdown("Define an action, demonstrate it via webcam, and train a machine learning model.")
-
-# Maintain state
 if 'actions' not in st.session_state:
     st.session_state['actions'] = {}
 if 'record_started' not in st.session_state:
@@ -356,7 +341,6 @@ with left_col:
                         face_data
                     ))
 
-                    # Stop automatically after 10 seconds or when "Stop Recording" is pressed
                     if stop_button or elapsed_time >= 10:
                         st.session_state['actions'][action_word] = all_frames
                         st.session_state['record_started'] = False
@@ -375,7 +359,6 @@ if st.session_state['actions']:
     all_rows = []
     for action, all_frames in st.session_state['actions'].items():
         if all_frames is not None and len(all_frames) > 1:
-            # Flatten each frame’s landmarks
             flat_landmarks_per_frame = []
             for f in all_frames:
                 (pose_data, 
@@ -397,15 +380,11 @@ if st.session_state['actions']:
                 )
 
             flat_landmarks_per_frame = np.array(flat_landmarks_per_frame)
-
-            # Identify keyframes based on velocity & acceleration thresholds
             keyframes = identify_keyframes(
                 flat_landmarks_per_frame, 
                 velocity_threshold=0.1, 
                 acceleration_threshold=0.1
             )
-
-            # For each keyframe, store data in the CSV
             for kf in keyframes:
                 if kf < len(all_frames):
                     st.session_state['sequence_id'] += 1
@@ -427,22 +406,18 @@ if st.session_state['actions']:
                     row = [action, st.session_state['sequence_id']] + row_data
                     all_rows.append(row)
                     
-    # Append new rows to the CSV file for this session
     if all_rows:
         with open(csv_file, mode='a', newline='') as f:
             csv_writer = csv.writer(f)
-            csv_writer.writerows(all_rows)  # Append rows instead of rewriting the file
+            csv_writer.writerows(all_rows)
         st.success(f"All recorded actions appended to '{csv_file}'")
 
-        # Display a quick summary of recorded actions
         df = pd.read_csv(csv_file)
-
         unique_actions = df['class'].unique()
         num_actions = len(unique_actions)
         num_cols = 8
         num_rows = (num_actions + num_cols - 1) // num_cols
 
-        # Display actions in an 8-across grid
         for r in range(num_rows):
             row_actions = unique_actions[r*num_cols:(r+1)*num_cols]
             cols = st.columns(num_cols)
@@ -457,12 +432,29 @@ if st.session_state['actions']:
 else:
     st.info("No actions recorded yet.")
 
+# ---------------------------
+# WebRTC Streamer with Holistic
+# ---------------------------
+def video_frame_callback(frame: av.VideoFrame) -> av.VideoFrame:
+    """
+    WebRTC callback that uses MediaPipe Holistic to process frames in real-time.
+    """
+    input_bgr = frame.to_ndarray(format="bgr24")
+    (annotated_image,
+     _pose_data,
+     _left_hand_data,
+     _left_hand_angles,
+     _right_hand_data,
+     _right_hand_angles,
+     _face_data) = process_frame(input_bgr)
+
+    return av.VideoFrame.from_ndarray(annotated_image, format="bgr24")
+
 webrtc_streamer(
     key="record-actions",
     mode=WebRtcMode.SENDRECV,
     rtc_configuration={"iceServers": get_ice_servers(), "iceTransportPolicy": "relay"},
     media_stream_constraints={"video": True, "audio": False},
-    video_frame_callback=process_frame,
+    video_frame_callback=video_frame_callback,
     async_processing=True,
 )
-
