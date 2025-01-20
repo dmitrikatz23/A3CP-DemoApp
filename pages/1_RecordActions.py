@@ -8,6 +8,7 @@ import cv2
 import numpy as np
 import streamlit as st
 from streamlit_webrtc import WebRtcMode, webrtc_streamer
+import re
 
 # Added imports from previous local-running file
 import csv
@@ -322,8 +323,11 @@ with left_col:
 
     # "Confirm Action" logic
     if st.button("Confirm Action") and action_word:
+        # Clean the action_word to make a valid key
+        sanitized_action_word = re.sub(r'[^a-zA-Z0-9_]', '_', action_word.strip())
         st.session_state['actions'][action_word] = None
         st.session_state['action_confirmed'] = True  # Set action confirmed
+        st.session_state['active_streamer_key'] = f"record-actions-{sanitized_action_word}"  # Update active key
         st.success(f"Action '{action_word}' confirmed!")
 
     # Conditionally show buttons/components based on confirmation
@@ -334,7 +338,7 @@ with left_col:
         # Display WebRTC streamer for the current action
         st.info(f"Streaming activated! Perform the action: {action_word}")
         webrtc_streamer(
-            key=streamer_key,  # Ensure the key is unique per action
+            key=streamer_key,  # Ensure the key is clean and unique
             mode=WebRtcMode.SENDRECV,
             rtc_configuration={"iceServers": get_ice_servers(), "iceTransportPolicy": "relay"},
             media_stream_constraints={"video": True, "audio": False},
