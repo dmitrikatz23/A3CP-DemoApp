@@ -273,6 +273,36 @@ def initialize_csv(file_name, header):
 if "csv_initialized" not in st.session_state:
     st.session_state["csv_initialized"] = initialize_csv(csv_file, header)
 
+
+
+
+ #---------------------------
+# WebRTC Streamer with Holistic
+# ---------------------------
+def video_frame_callback(frame: av.VideoFrame) -> av.VideoFrame:
+    """
+    WebRTC callback that uses MediaPipe Holistic to process frames in real-time.
+    """
+    input_bgr = frame.to_ndarray(format="bgr24")
+    (annotated_image,
+     _pose_data,
+     _left_hand_data,
+     _left_hand_angles,
+     _right_hand_data,
+     _right_hand_angles,
+     _face_data) = process_frame(input_bgr)
+
+    return av.VideoFrame.from_ndarray(annotated_image, format="bgr24")
+
+webrtc_streamer(
+    key="record-actions",
+    mode=WebRtcMode.SENDRECV,
+    rtc_configuration={"iceServers": get_ice_servers(), "iceTransportPolicy": "relay"},
+    media_stream_constraints={"video": True, "audio": False},
+    video_frame_callback=video_frame_callback,
+    async_processing=True,
+)
+
 # ---------------------------
 # Streamlit & Recording Logic
 # ---------------------------
@@ -394,29 +424,3 @@ if st.session_state['actions']:
 else:
     st.info("No actions recorded yet.")
 
-# ---------------------------
-# WebRTC Streamer with Holistic
-# ---------------------------
-def video_frame_callback(frame: av.VideoFrame) -> av.VideoFrame:
-    """
-    WebRTC callback that uses MediaPipe Holistic to process frames in real-time.
-    """
-    input_bgr = frame.to_ndarray(format="bgr24")
-    (annotated_image,
-     _pose_data,
-     _left_hand_data,
-     _left_hand_angles,
-     _right_hand_data,
-     _right_hand_angles,
-     _face_data) = process_frame(input_bgr)
-
-    return av.VideoFrame.from_ndarray(annotated_image, format="bgr24")
-
-webrtc_streamer(
-    key="record-actions",
-    mode=WebRtcMode.SENDRECV,
-    rtc_configuration={"iceServers": get_ice_servers(), "iceTransportPolicy": "relay"},
-    media_stream_constraints={"video": True, "audio": False},
-    video_frame_callback=video_frame_callback,
-    async_processing=True,
-)
