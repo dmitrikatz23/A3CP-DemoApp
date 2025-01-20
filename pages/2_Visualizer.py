@@ -19,6 +19,7 @@ from datetime import datetime
 #for import from upper folder
 import sys
 from pathlib import Path
+
 # Add the parent directory of the 'pages' folder to sys.path
 sys.path.append(str(Path(__file__).resolve().parent.parent))
 
@@ -81,19 +82,17 @@ header = load_csv_header()
 @st.cache_resource
 def load_mediapipe_model():
     """
-    Load and cache the MediaPipe Holistic model with optimized settings for video processing.
-    - min_detection_confidence: Minimum confidence value for the detection to be considered successful.
-    - min_tracking_confidence: Minimum confidence value for the tracking to be considered successful.
-    - static_image_mode: Set to False to optimize for video input.
+    Load and cache the MediaPipe Holistic model for optimized video processing.
     """
     return mp.solutions.holistic.Holistic(
         min_detection_confidence=0.5,
         min_tracking_confidence=0.5,
-        static_image_mode=False  # Optimize for continuous video input
+        static_image_mode=False  # Optimize for real-time video input
     )
 
-# Load the MediaPipe holistic model once and cache it
+# Load MediaPipe Holistic model
 holistic_model = load_mediapipe_model()
+
 
 def calculate_velocity(landmarks):
     """Calculate Euclidean velocity between consecutive frames."""
@@ -463,7 +462,7 @@ webrtc_streamer(
     mode=WebRtcMode.SENDRECV,
     rtc_configuration={"iceServers": get_ice_servers(), "iceTransportPolicy": "relay"},
     media_stream_constraints={"video": True, "audio": False},
-    video_frame_callback=video_frame_callback,
+    video_frame_callback=process_frame,
     async_processing=True,
 )
 
