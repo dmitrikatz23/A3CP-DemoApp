@@ -9,7 +9,6 @@ import numpy as np
 import streamlit as st
 from streamlit_webrtc import WebRtcMode, webrtc_streamer
 
-# Additional imports
 import csv
 import time
 import pandas as pd
@@ -28,15 +27,16 @@ from sample_utils.turn import get_ice_servers
 logger = logging.getLogger(__name__)
 st.set_page_config(layout="wide")
 
+# MediaPipe helpers
 mp_drawing = mp.solutions.drawing_utils
 mp_holistic = mp.solutions.holistic
 
 # ---------------------------
 # Landmark / Angle Structure
 # ---------------------------
-num_pose_landmarks = 33
-num_hand_landmarks_per_hand = 21
-num_face_landmarks = 468
+NUM_POSE_LANDMARKS = 33
+NUM_HAND_LANDMARKS_PER_HAND = 21
+NUM_FACE_LANDMARKS = 468
 
 angle_names_base = [
     'thumb_mcp', 'thumb_ip',
@@ -49,16 +49,16 @@ left_hand_angle_names = [f'left_{name}' for name in angle_names_base]
 right_hand_angle_names = [f'right_{name}' for name in angle_names_base]
 
 pose_landmarks = [
-    f'pose_{axis}{i}' for i in range(1, num_pose_landmarks + 1) for axis in ['x', 'y', 'v']
+    f'pose_{axis}{i}' for i in range(1, NUM_POSE_LANDMARKS + 1) for axis in ['x', 'y', 'v']
 ]
 left_hand_landmarks = [
-    f'left_hand_{axis}{i}' for i in range(1, num_hand_landmarks_per_hand + 1) for axis in ['x', 'y', 'v']
+    f'left_hand_{axis}{i}' for i in range(1, NUM_HAND_LANDMARKS_PER_HAND + 1) for axis in ['x', 'y', 'v']
 ]
 right_hand_landmarks = [
-    f'right_hand_{axis}{i}' for i in range(1, num_hand_landmarks_per_hand + 1) for axis in ['x', 'y', 'v']
+    f'right_hand_{axis}{i}' for i in range(1, NUM_HAND_LANDMARKS_PER_HAND + 1) for axis in ['x', 'y', 'v']
 ]
 face_landmarks = [
-    f'face_{axis}{i}' for i in range(1, num_face_landmarks + 1) for axis in ['x', 'y', 'v']
+    f'face_{axis}{i}' for i in range(1, NUM_FACE_LANDMARKS + 1) for axis in ['x', 'y', 'v']
 ]
 
 @st.cache_data
@@ -89,19 +89,16 @@ def load_mediapipe_model():
 holistic_model = load_mediapipe_model()
 
 def calculate_angle(a, b, c):
-    a = np.array(a)
-    b = np.array(b)
-    c = np.array(c)
-    radians = np.arctan2(c[1]-b[1], c[0]-b[0]) - np.arctan2(a[1]-b[1], a[0]-b[0])
+    a, b, c = map(np.array, [a, b, c])
+    radians = (np.arctan2(c[1]-b[1], c[0]-b[0])
+               - np.arctan2(a[1]-b[1], a[0]-b[0]))
     angle = np.abs(radians * 180.0 / np.pi)
-    if angle > 180.0:
-        angle = 360 - angle
-    return angle
+    return 360 - angle if angle > 180.0 else angle
 
 def process_frame(bgr_image):
     """
-    Process a BGR image using MediaPipe Holistic, returning:
-    (annotated_image, pose_data, left_hand_data, left_hand_angles, right_hand_data, right_hand_angles, face_data)
+    Process a BGR frame via MediaPipe Holistic.
+    Returns (annotated_image, pose_data, left_hand_data, left_hand_angles, right_hand_data, right_hand_angles, face_data)
     """
     rgb_image = cv2.cvtColor(bgr_image, cv2.COLOR_BGR2RGB)
     results = holistic_model.process(rgb_image)
@@ -121,14 +118,14 @@ def process_frame(bgr_image):
     if results.pose_landmarks:
         pose_data = [[lm.x, lm.y, lm.visibility] for lm in results.pose_landmarks.landmark]
     else:
-        pose_data = [[0, 0, 0]] * num_pose_landmarks
+        pose_data = [[0, 0, 0]] * NUM_POSE_LANDMARKS
 
     # Hand data
     def extract_hand_data(hand_landmarks):
         if hand_landmarks:
             return [[lm.x, lm.y, lm.visibility] for lm in hand_landmarks.landmark]
         else:
-            return [[0, 0, 0]] * num_hand_landmarks_per_hand
+            return [[0, 0, 0]] * NUM_HAND_LANDMARKS_PER_HAND
 
     left_hand_data = extract_hand_data(results.left_hand_landmarks)
     right_hand_data = extract_hand_data(results.right_hand_landmarks)
@@ -137,7 +134,7 @@ def process_frame(bgr_image):
     if results.face_landmarks:
         face_data = [[lm.x, lm.y, lm.visibility] for lm in results.face_landmarks.landmark]
     else:
-        face_data = [[0, 0, 0]] * num_face_landmarks
+        face_data = [[0, 0, 0]] * NUM_FACE_LANDMARKS
 
     # Calculate angles
     def hand_angles(hand_landmarks):
@@ -147,7 +144,7 @@ def process_frame(bgr_image):
         h = {i: hand_landmarks[i] for i in range(len(hand_landmarks))}
         def pt(i): return [h[i][0], h[i][1]]
 
-        # Example calculations
+        # Example of angle calculations
         thumb_mcp = calculate_angle(pt(1), pt(2), pt(3))
         thumb_ip  = calculate_angle(pt(2), pt(3), pt(4))
 
@@ -159,9 +156,9 @@ def process_frame(bgr_image):
         middle_pip = calculate_angle(pt(9), pt(10), pt(11))
         middle_dip = calculate_angle(pt(10), pt(11), pt(12))
 
-        ring_mcp = calculate_angle(pt(0), pt(13), pt(14))
-        ring_pip = calculate_angle(pt(13), pt(14), pt(15))
-        ring_dip = calculate_angle(pt(14), pt(15), pt(16))
+        ring_mcp   = calculate_angle(pt(0), pt(13), pt(14))
+        ring_pip   = calculate_angle(pt(13), pt(14), pt(15))
+        ring_dip   = calculate_angle(pt(14), pt(15), pt(16))
 
         little_mcp = calculate_angle(pt(0), pt(17), pt(18))
         little_pip = calculate_angle(pt(17), pt(18), pt(19))
@@ -189,12 +186,12 @@ def flatten_landmarks(
     face_data
 ):
     """Flatten all landmark data + angles into a single 1D list."""
-    pose_flat = [val for landmark in pose_data for val in landmark]
-    left_hand_flat = [val for landmark in left_hand_data for val in landmark]
-    right_hand_flat = [val for landmark in right_hand_data for val in landmark]
+    pose_flat = [val for lm in pose_data for val in lm]
+    left_hand_flat = [val for lm in left_hand_data for val in lm]
+    right_hand_flat = [val for lm in right_hand_data for val in lm]
     left_angles_flat = left_hand_angles
     right_angles_flat = right_hand_angles
-    face_flat = [val for landmark in face_data for val in landmark]
+    face_flat = [val for lm in face_data for val in lm]
 
     return (
         pose_flat
@@ -206,11 +203,10 @@ def flatten_landmarks(
     )
 
 # ---------------------------
-# CSV Initialization
+# CSV Management
 # ---------------------------
 csv_folder = "csv"
-if not os.path.exists(csv_folder):
-    os.makedirs(csv_folder)
+os.makedirs(csv_folder, exist_ok=True)
 
 if "csv_file" not in st.session_state:
     session_start_str = datetime.now().strftime("%Y-%m-%d_%H-%M-%S")
@@ -229,11 +225,10 @@ if "csv_initialized" not in st.session_state:
     st.session_state["csv_initialized"] = initialize_csv(csv_file, header)
 
 # ---------------------------
-# Streamlit State
+# Streamlit State & Layout
 # ---------------------------
 st.title("Record and Action")
 
-# Keep track of user-defined states
 if "actions" not in st.session_state:
     st.session_state["actions"] = {}
 if "action_confirmed" not in st.session_state:
@@ -245,64 +240,76 @@ if "record_in_progress" not in st.session_state:
 if "record_start_time" not in st.session_state:
     st.session_state["record_start_time"] = 0
 if "frames" not in st.session_state:
-    st.session_state["frames"] = []  # store landmark data, etc.
+    st.session_state["frames"] = []
 if "record_duration" not in st.session_state:
-    st.session_state["record_duration"] = 10  # default
+    st.session_state["record_duration"] = 10
 
 col_controls, col_stream = st.columns([1, 2])
 
 with col_controls:
     st.header("Controls")
-    action_word = st.text_input("Enter the intended meaning for the action (e.g. I'm hungry)")
-    record_time = st.number_input("Recording Time (seconds)", min_value=1, max_value=300, value=10)
 
-    if st.button("Confirm Action") and action_word:
+    action_word = st.text_input("Enter the intended meaning for the action (e.g., I'm hungry)")
+    duration = st.number_input("Recording Time (seconds)", min_value=1, max_value=300, value=10)
+
+    confirm_clicked = st.button("Confirm Action")
+    if confirm_clicked and action_word:
+        # Save the action and set it confirmed
         st.session_state["actions"][action_word] = None
         st.session_state["action_confirmed"] = True
-        st.session_state["record_duration"] = record_time
-        st.success(f"Action '{action_word}' confirmed for {record_time} seconds!")
+        st.session_state["record_duration"] = duration
+        st.success(f"Action '{action_word}' confirmed for {duration} seconds.")
 
-    # Button to start recording from WebRTC frames
+    # Button to trigger the recording
     if st.session_state["action_confirmed"]:
         if not st.session_state["record_in_progress"]:
-            if st.button("Start Recording"):
+            start_btn = st.button("Start Recording")
+            if start_btn:
                 st.session_state["record_in_progress"] = True
                 st.session_state["record_start_time"] = time.time()
                 st.session_state["frames"] = []
                 st.info("Recording started...")
         else:
-            st.warning("Recording is already in progress...")
+            st.warning("Recording in progress...")
 
 with col_stream:
     st.subheader("Live Stream (Appears After Action Confirmation)")
 
-# This callback collects frames from the live stream if "record_in_progress" is True
 def webrtc_video_callback(frame: av.VideoFrame) -> av.VideoFrame:
+    """
+    WebRTC callback that uses MediaPipe Holistic for real-time frame processing.
+    Also collects data for the specified duration once 'record_in_progress' is True.
+    """
     frame_bgr = frame.to_ndarray(format="bgr24")
-    annotated_image, p_data, lh_data, lh_angles, rh_data, rh_angles, f_data = process_frame(frame_bgr)
+    (
+        annotated_image,
+        pose_data,
+        left_data,
+        left_angles,
+        right_data,
+        right_angles,
+        face_data
+    ) = process_frame(frame_bgr)
 
-    # If we are recording, collect the data
+    # If recording in progress, store frames
     if st.session_state["record_in_progress"]:
-        elapsed = time.time() - st.session_state["record_start_time"]
+        elapsed_time = time.time() - st.session_state["record_start_time"]
+        st.session_state["frames"].append((pose_data, left_data, left_angles, right_data, right_angles, face_data))
 
-        # Append frame data for potential CSV storage
-        st.session_state["frames"].append((p_data, lh_data, lh_angles, rh_data, rh_angles, f_data))
-
-        if elapsed >= st.session_state["record_duration"]:
-            # Stop recording automatically
+        # Stop automatically if time is up
+        if elapsed_time >= st.session_state["record_duration"]:
             st.session_state["record_in_progress"] = False
-            st.success(f"Recording ended after {elapsed:.1f} seconds.")
-            # Process frames if desired
-            st.info(f"Captured {len(st.session_state['frames'])} frames. Ready for keyframe analysis or CSV export.")
+            st.success(f"Recording ended after {elapsed_time:.1f} seconds.")
+            st.info(f"Captured {len(st.session_state['frames'])} frames.")
 
     return av.VideoFrame.from_ndarray(annotated_image, format="bgr24")
 
-# Display WebRTC only if action confirmed
+# Show WebRTC only after an action is confirmed
 if st.session_state["action_confirmed"]:
     webrtc_streamer(
         key="record-actions",
         mode=WebRtcMode.SENDRECV,
-        rtc_configuration={"iceServers": get_ice_servers(), "iceTransportPolicy": "relay"},
+        rtc_configuration={"iceServers": get_ice_servers()},
         media_stream_constraints={"video": True, "audio": False},
         video_frame_callback=webrtc_video_callback,
         async_processing=True,
@@ -311,19 +318,22 @@ else:
     st.info("Confirm an action to enable the live stream.")
 
 # ---------------------------
-# Display / Process Recorded Actions
+# Post-Recording Logic
 # ---------------------------
 st.header("Recorded Actions")
 if st.session_state["frames"]:
-    # Example code to flatten data for CSV / keyframe detection
-    # (when the user is done recording).
+    st.write(f"Total frames recorded: {len(st.session_state['frames'])}")
+    st.write("You can now analyze these frames, detect keyframes, or append them to a CSV.")
+
+    # Example: Flatten each frame's landmarks
+    # (Expand with your own logic for keyframes / CSV writes)
     all_landmarks = []
     for f in st.session_state["frames"]:
-        p_data, lh_data, lh_angles, rh_data, rh_angles, f_data = f
-        row_data = flatten_landmarks(p_data, lh_data, lh_angles, rh_data, rh_angles, f_data)
-        all_landmarks.append(row_data)
+        (p_data, lh_data, lh_angles, rh_data, rh_angles, f_data) = f
+        row = flatten_landmarks(p_data, lh_data, lh_angles, rh_data, rh_angles, f_data)
+        all_landmarks.append(row)
 
-    # Keyframe detection, CSV writing, or other logic can go here
-    st.write(f"Stored {len(all_landmarks)} frames of landmark data. (You can add keyframe detection or CSV saves here.)")
+    st.write("Sample flattened data of first frame:")
+    st.write(all_landmarks[0] if all_landmarks else "No data yet.")
 else:
-    st.info("No frames recorded yet. Confirm an action and start recording.")
+    st.info("No frames recorded yet. Confirm an action and press 'Start Recording'.")
