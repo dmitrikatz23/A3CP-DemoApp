@@ -276,15 +276,88 @@ if "csv_initialized" not in st.session_state:
 # ---------------------------
 # Streamlit & Recording Logic
 # ---------------------------
+st.title("Record and Action")
+
+if 'actions' not in st.session_state:
+    st.session_state['actions'] = {}
+if 'record_started' not in st.session_state:
+    st.session_state['record_started'] = False
+if 'sequence_id' not in st.session_state:
+    st.session_state['sequence_id'] = 0
+
+left_col, right_col = st.columns([1, 2])
+FRAME_WINDOW = right_col.image([])
+status_bar = right_col.empty()
+
+file_exists = os.path.isfile(csv_file)
+
+with left_col:
+    st.header("Controls")
+    action_word = st.text_input("Enter the intended meaning for the action e.g. I'm hungry")
+
+    if st.button("Confirm Action") and action_word:
+        st.session_state['actions'][action_word] = None
+        st.success(f"Action '{action_word}' confirmed!")
+
+    if action_word in st.session_state['actions']:
+        if st.button("Start Recording", key=f"start_recording_{action_word}"):
+            cap = cv2.VideoCapture(0)
+            if not cap.isOpened():
+                st.error("Cannot open webcam")
+            else:
+                st.session_state['record_started'] = True
+                start_time = time.time()
+                all_frames = []
+                stop_button_pressed = False
+
+                stop_button = st.button("Stop Recording", key=f"stop_recording_{action_word}")
+
+                while st.session_state['record_started']:
+                    elapsed_time = int(time.time() - start_time)
+                    status_bar.text(f"Time Elapsed: {elapsed_time} seconds")
+
+                    ret, frame = cap.read()
+                    if not ret:
+                        st.error("Failed to capture frame")
+                        break
+
+                    # Process each frame
+                    (processed_image,
+                     pose_data,
+                     left_hand_data,
+                     left_hand_angles_data,
+                     right_hand_data,
+                     right_hand_angles_data,
+                     face_data) = process_frame(frame)
+
+                    FRAME_WINDOW.image(processed_image, channels="BGR")
+
+                    all_frames.append((
+                        pose_data, 
+                        left_hand_data, 
+                        left_hand_angles_data, 
+                        right_hand_data, 
+                        right_hand_angles_data, 
+                        face_data
+                    ))
+
+                    if stop_button or elapsed_time >= 10:
+                        st.session_state['actions'][action_word] = all_frames
+                        st.session_state['record_started'] = False
+                        stop_button_pressed = True
+                        break
+
+                cap.release()
+                FRAME_WINDOW.image([])
+
+                if stop_button_pressed:
+                    st.success(f"Recording for '{action_word}' saved!")
+                    st.info("Camera turned off.")
+
 st.header("Recorded Actions")
 if st.session_state['actions']:
-    # In the previous code, this section processed local recordings.
-    # Currently, we do not store frames from WebRTC, so it won't display new data.
-    # If you later implement storing frames in `st.session_state['actions'][action_word]`,
-    # this logic can still be used to process & save keyframes.
     all_rows = []
     for action, all_frames in st.session_state['actions'].items():
-        # all_frames is None by default since we removed the local capturing logic
         if all_frames is not None and len(all_frames) > 1:
             flat_landmarks_per_frame = []
             for f in all_frames:
@@ -355,38 +428,33 @@ if st.session_state['actions']:
                         unsafe_allow_html=True
                     )
     else:
-        st.warning("No keyframes were identified or no recorded data is available.")
+        st.warning("No keyframes were identified. Try recording a clearer gesture.")
 else:
     st.info("No actions recorded yet.")
 
 # ---------------------------
 # WebRTC Streamer with Holistic
 # ---------------------------
-if action_word:
-    st.write(f"Streaming MediaPipe Holistic for action: '{action_word}'")
+def video_frame_callback(frame: av.VideoFrame) -> av.VideoFrame:
+    """
+    WebRTC callback that uses MediaPipe Holistic to process frames in real-time.
+    """
+    input_bgr = frame.to_ndarray(format="bgr24")
+    (annotated_image,
+     _pose_data,
+     _left_hand_data,
+     _left_hand_angles,
+     _right_hand_data,
+     _right_hand_angles,
+     _face_data) = process_frame(input_bgr)
 
-    def video_frame_callback(frame: av.VideoFrame) -> av.VideoFrame:
-        """
-        WebRTC callback that uses MediaPipe Holistic to process frames in real-time.
-        """
-        input_bgr = frame.to_ndarray(format="bgr24")
-        (annotated_image,
-         _pose_data,
-         _left_hand_data,
-         _left_hand_angles,
-         _right_hand_data,
-         _right_hand_angles,
-         _face_data) = process_frame(input_bgr)
+    return av.VideoFrame.from_ndarray(annotated_image, format="bgr24")
 
-        return av.VideoFrame.from_ndarray(annotated_image, format="bgr24")
-
-    webrtc_streamer(
-        key="record-actions",
-        mode=WebRtcMode.SENDRECV,
-        rtc_configuration={"iceServers": get_ice_servers(), "iceTransportPolicy": "relay"},
-        media_stream_constraints={"video": True, "audio": False},
-        video_frame_callback=video_frame_callback,
-        async_processing=True,
-    )
-else:
-    st.info("Please enter and confirm an action word to enable the WebRTC streamer.")
+webrtc_streamer(
+    key="record-actions",
+    mode=WebRtcMode.SENDRECV,
+    rtc_configuration={"iceServers": get_ice_servers(), "iceTransportPolicy": "relay"},
+    media_stream_constraints={"video": True, "audio": False},
+    video_frame_callback=video_frame_callback,
+    async_processing=True,
+)
