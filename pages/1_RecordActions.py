@@ -284,6 +284,8 @@ if 'record_started' not in st.session_state:
     st.session_state['record_started'] = False
 if 'sequence_id' not in st.session_state:
     st.session_state['sequence_id'] = 0
+if 'action_confirmed' not in st.session_state:
+    st.session_state['action_confirmed'] = False  # Track whether action is confirmed
 
 left_col, right_col = st.columns([1, 2])
 FRAME_WINDOW = right_col.image([])
@@ -295,64 +297,24 @@ with left_col:
     st.header("Controls")
     action_word = st.text_input("Enter the intended meaning for the action e.g. I'm hungry")
 
+    # "Confirm Action" logic
     if st.button("Confirm Action") and action_word:
         st.session_state['actions'][action_word] = None
+        st.session_state['action_confirmed'] = True  # Set action confirmed
         st.success(f"Action '{action_word}' confirmed!")
 
-    if action_word in st.session_state['actions']:
-        if st.button("Start Recording", key=f"start_recording_{action_word}"):
-            cap = cv2.VideoCapture(0)
-            if not cap.isOpened():
-                st.error("Cannot open webcam")
-            else:
-                st.session_state['record_started'] = True
-                start_time = time.time()
-                all_frames = []
-                stop_button_pressed = False
-
-                stop_button = st.button("Stop Recording", key=f"stop_recording_{action_word}")
-
-                while st.session_state['record_started']:
-                    elapsed_time = int(time.time() - start_time)
-                    status_bar.text(f"Time Elapsed: {elapsed_time} seconds")
-
-                    ret, frame = cap.read()
-                    if not ret:
-                        st.error("Failed to capture frame")
-                        break
-
-                    # Process each frame
-                    (processed_image,
-                     pose_data,
-                     left_hand_data,
-                     left_hand_angles_data,
-                     right_hand_data,
-                     right_hand_angles_data,
-                     face_data) = process_frame(frame)
-
-                    FRAME_WINDOW.image(processed_image, channels="BGR")
-
-                    all_frames.append((
-                        pose_data, 
-                        left_hand_data, 
-                        left_hand_angles_data, 
-                        right_hand_data, 
-                        right_hand_angles_data, 
-                        face_data
-                    ))
-
-                    if stop_button or elapsed_time >= 10:
-                        st.session_state['actions'][action_word] = all_frames
-                        st.session_state['record_started'] = False
-                        stop_button_pressed = True
-                        break
-
-                cap.release()
-                FRAME_WINDOW.image([])
-
-                if stop_button_pressed:
-                    st.success(f"Recording for '{action_word}' saved!")
-                    st.info("Camera turned off.")
+    # Conditionally show buttons/components based on confirmation
+    if st.session_state.get('action_confirmed', False):
+        # Display WebRTC streamer instead of "Start Recording" button
+        st.info("Streaming activated! Perform the action.")
+        webrtc_streamer(
+            key="record-actions",
+            mode=WebRtcMode.SENDRECV,
+            rtc_configuration={"iceServers": get_ice_servers(), "iceTransportPolicy": "relay"},
+            media_stream_constraints={"video": True, "audio": False},
+            video_frame_callback=video_frame_callback,
+            async_processing=True,
+        )
 
 st.header("Recorded Actions")
 if st.session_state['actions']:
