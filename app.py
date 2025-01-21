@@ -1,5 +1,4 @@
 import streamlit as st
-#from pathlib import Path
 from streamlit_extras.switch_page_button import switch_page
 
 # --- Layout Configuration ---
@@ -8,7 +7,8 @@ st.set_page_config(
     layout="centered",
     initial_sidebar_state="auto",
 )
-# hamburger menu more prominent
+
+# Hamburger menu prompt
 st.markdown(
     """
     <div style="text-align: center; margin-top: 14px;">
@@ -20,59 +20,26 @@ st.markdown(
     unsafe_allow_html=True
 )
 
-
 # --- Custom CSS Styling ---
 st.markdown(
     """
     <style>
-    .landing-title {
-        font-size: 3em;
-        font-weight: bold;
-        color: #4B9CD3;
-        margin-bottom: 0.2em;
-        text-align: center;
-        font-family: "Helvetica Neue", Arial, sans-serif;
-    }
-    .landing-subtitle {
-        font-size: 1.2em;
-        margin-top: 0.2em;
-        text-align: center;
-        color: #555555;
-    }
-    .landing-container {
-        max-width: 700px;
-        margin: auto;
-        margin-top: 4rem;
-        padding: 2rem;
-        background-color: #fefefe;
-        border-radius: 10px;
-        box-shadow: 0 2px 10px rgba(0,0,0,0.1);
-    }
-    .landing-text {
-        font-size: 1.1em;
-        margin-top: 1.5em;
-        text-align: justify;
-        color: #333333;
-        line-height: 1.6em;
-    }
-    .landing-button {
+    .stButton > button {
         display: block;
-        margin: 2em auto;
-        width: 60%;
-        font-size: 1.2em;
-        padding: 0.6em;
-        background-color: white; /* White background */
+        margin: 20px auto; /* Center the button */
+        padding: 10px 20px;
+        font-size: 16px;
         color: #1E3A8A; /* Dark blue text */
+        border: 2px solid #1E3A8A; /* Dark blue border */
         border-radius: 8px;
-        border: 2px solid #1E3A8A; /* Blue outline */
+        background-color: white; /* White background */
         text-align: center;
-        font-weight: bold;
+        font-weight: normal;
         cursor: pointer;
-        text-decoration: none;
     }
-    .landing-button:hover {
-        background-color: #E5EFFF; /* Light blue on hover */
-        color: #1E3A8A;
+    .stButton > button:hover {
+        font-weight: bold; /* Bold text on hover */
+        background-color: #E5EFFF; /* Light blue background on hover */
     }
     </style>
     """,
@@ -81,8 +48,6 @@ st.markdown(
 
 # --- Main Container ---
 with st.container():
-    #st.markdown("<div class='landing-container'>", unsafe_allow_html=True)
-
     # Title & Subtitle
     st.markdown("<h1 class='landing-title'>Welcome to the A3CP Action Mapping App!</h1>", unsafe_allow_html=True)
     st.markdown("<h3 class='landing-subtitle'>Capture and visualize non-verbal gestural communication</h3>", unsafe_allow_html=True)
@@ -116,5 +81,3 @@ with st.container():
     # Button to Go to Record Actions Page
     if st.button("Go to Recording Page to Start"):
         switch_page("RecordActions")
-
-    st.markdown("</div>", unsafe_allow_html=True)
