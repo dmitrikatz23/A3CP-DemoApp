@@ -51,7 +51,14 @@ st.markdown(
 # --- Main Container ---
 with st.container():
     # Title & Subtitle
-    st.markdown("<h1 class='landing-title'>Welcome to the A3CP Action Mapping App!</h1>", unsafe_allow_html=True)
+    st.markdown(
+    """
+    <div style="text-align: center;">
+        <h1 class='landing-title'>Welcome to the A3CP Action Mapping App!</h1>
+    </div>
+    """,
+    unsafe_allow_html=True
+)
     st.markdown("<h3 class='landing-subtitle'>Capture and visualize non-verbal gestural communication</h3>", unsafe_allow_html=True)
 
     # Introductory Text
