@@ -109,10 +109,14 @@ with st.container():
         unsafe_allow_html=True
     )
 
-    # Button to Go to Record Actions Page
-    if st.button("Go to Recording Page to Start"):
-        st.session_state["current_page"] = "RecordActions"
+    # Styled Button with Navigation
+    st.markdown(
+        """
+        <a href='/' onclick="window.location.reload()" class='landing-button'>Go to Recording Page to Start</a>
+        """,
+        unsafe_allow_html=True
+    )
 
-# Redirect to the RecordActions page
-if "current_page" in st.session_state and st.session_state["current_page"] == "RecordActions":
-    st.experimental_rerun()
+---
+
+Ensure that CSS styles are tightly maintained as code styles .
