@@ -20,9 +20,9 @@ st.title("CSV Troubleshooting App")
 # Button to add a new row
 if st.button("Make a CSV"):
     # Generate a new row with random numbers from 1 to 10
-    new_row = {str(i): random.randint(1, 10) for i in range(1, 11)}
-    # Append the new row to the DataFrame
-    df = df.append(new_row, ignore_index=True)
+    new_row = pd.DataFrame([{str(i): random.randint(1, 10) for i in range(1, 11)}])
+    # Append the new row to the DataFrame using pd.concat
+    df = pd.concat([df, new_row], ignore_index=True)
     # Save the updated DataFrame to the CSV
     df.to_csv(csv_file, index=False)
     st.success("New row added to the CSV!")
