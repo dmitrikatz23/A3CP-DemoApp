@@ -12,7 +12,7 @@ st.markdown(
     """
     <div style="text-align: center; margin-top: 10px;">
         <p style="font-size: 0.9em; color: #1E3A8A;">
-            📖 Use the menu in the top-left corner to navigate!
+            <- Use the menu in the top-left corner to navigate!
         </p>
     </div>
     """,
@@ -114,7 +114,7 @@ with st.container():
 
     # Button to Go to Record Actions Page
     st.markdown(
-        "<a class='landing-button' href='pages/1_RecordActions.py'>Go to Recording Page to Start</a>",
+        "<a class='landing-button' href='?page=RecordActions'>Go to Recording Page to Start</a>",
         unsafe_allow_html=True
     )
 
