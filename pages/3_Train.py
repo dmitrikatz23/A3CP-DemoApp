@@ -33,7 +33,9 @@ df = pd.read_csv(csv_file_local)
 
 # Clone or create the Hugging Face repository
 repo = Repository(local_dir=local_repo_path, clone_from=repo_name, use_auth_token=hf_token, repo_type="dataset")
-repo.git_config_username_and_email(user=git_user, email=git_email)
+
+# Configure Git user details (Positional Arguments)
+repo.git_config_username_and_email(git_user, git_email)
 
 # Function to save CSV permanently
 def save_to_repo():
