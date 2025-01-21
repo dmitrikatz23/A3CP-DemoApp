@@ -1,5 +1,6 @@
 import streamlit as st
-from pathlib import Path
+#from pathlib import Path
+from streamlit_extras.switch_page_button import switch_page
 
 # --- Layout Configuration ---
 st.set_page_config(
@@ -113,9 +114,7 @@ with st.container():
     )
 
     # Button to Go to Record Actions Page
-    st.markdown(
-        "<a class='landing-button' href='?page=RecordActions'>Go to Recording Page to Start</a>",
-        unsafe_allow_html=True
-    )
+    if st.button("Go to Recording Page to Start"):
+        switch_page("RecordActions")
 
     st.markdown("</div>", unsafe_allow_html=True)
