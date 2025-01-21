@@ -1,5 +1,4 @@
 import streamlit as st
-from pathlib import Path
 
 # --- Layout Configuration ---
 st.set_page_config(
@@ -7,10 +6,11 @@ st.set_page_config(
     layout="centered",
     initial_sidebar_state="auto",
 )
-# hamburger menu more prominent
+
+# Hamburger menu prompt
 st.markdown(
     """
-    <div style="text-align: center; margin-top: 10px;">
+    <div style="text-align: center; margin-top: 14px;">
         <p style="font-size: 0.9em; color: #1E3A8A;">
             <- Use the menu in the top-left corner to navigate!
         </p>
@@ -18,7 +18,6 @@ st.markdown(
     """,
     unsafe_allow_html=True
 )
-
 
 # --- Custom CSS Styling ---
 st.markdown(
@@ -80,8 +79,6 @@ st.markdown(
 
 # --- Main Container ---
 with st.container():
-    #st.markdown("<div class='landing-container'>", unsafe_allow_html=True)
-
     # Title & Subtitle
     st.markdown("<h1 class='landing-title'>Welcome to the A3CP Action Mapping App!</h1>", unsafe_allow_html=True)
     st.markdown("<h3 class='landing-subtitle'>Capture and visualize non-verbal gestural communication</h3>", unsafe_allow_html=True)
@@ -113,9 +110,9 @@ with st.container():
     )
 
     # Button to Go to Record Actions Page
-    st.markdown(
-        "<a class='landing-button' href='?page=RecordActions'>Go to Recording Page to Start</a>",
-        unsafe_allow_html=True
-    )
+    if st.button("Go to Recording Page to Start"):
+        st.session_state["current_page"] = "RecordActions"
 
-    st.markdown("</div>", unsafe_allow_html=True)
+# Redirect to the RecordActions page
+if "current_page" in st.session_state and st.session_state["current_page"] == "RecordActions":
+    st.experimental_rerun()
