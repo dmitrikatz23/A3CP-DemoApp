@@ -39,7 +39,9 @@ st.markdown(
     }
     .stButton > button:hover {
         font-weight: bold; /* Bold text on hover */
-        background-color: #E5EFFF; /* Light blue background on hover */
+        background-color: #4CAF50; /* green background on hover */
+        color: white; /* White text on hover */
+
     }
     </style>
     """,
@@ -69,10 +71,10 @@ with st.container():
         <p class='landing-text'>
         <b>How it works:</b><br>
         1. Navigate to the Record Actions page.<br>
-        2. Enter your intended action meaning (e.g., "I’m hungry").<br>
+        2. Enter name of action (Hello!).<br>
         3. Confirm the action.<br>
         4. The app will open a webcam stream for you to perform and record.<br>
-        5. After processing, the app will store frames in the CSV folder.<br>
+        5. After processing, the app will store key frames as numbers.<br>
         </p>
         """,
         unsafe_allow_html=True
