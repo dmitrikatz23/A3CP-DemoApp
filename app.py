@@ -25,7 +25,6 @@ st.markdown(
     
     """
     <style>
-    
     .landing-title {
         font-size: 3em;
         font-weight: bold;
@@ -51,7 +50,11 @@ st.markdown(
         font-weight: bold; /* Bold text on hover */
         color: green; /* green text on hover */
         border: 3px solid green; /* green border */
-
+    }
+    .stButton > button:active {
+        background-color: #DFF2DF; /* Light green background on mouse down */
+        color: #4CAF50; /* Green text */
+        border: 2px solid #4CAF50; /* Green border */
     }
     </style>
     """,
