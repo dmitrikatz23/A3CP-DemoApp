@@ -37,4 +37,28 @@ def save_to_repo():
     # Copy the local CSV to the repo directory
     df.to_csv(csv_file_repo, index=False)
     # Add, commit, and push changes
-    repo.git_add(csv_file_name)  # Use
+    repo.git_add(csv_file_name)  # Use the relative path within the repo
+    repo.git_commit("Update A3CP actions CSV")
+    repo.git_push()
+
+# Streamlit app
+st.title("Save A3CP Actions to Hugging Face")
+
+# Button to add a new row to the CSV
+if st.button("Add Row to CSV"):
+    new_row = pd.DataFrame([{str(i): random.randint(1, 10) for i in range(1, 11)}])  # Generate random numbers 1-10
+    df = pd.concat([df, new_row], ignore_index=True)  # Add the new row
+    df.to_csv(csv_file_local, index=False)  # Save locally
+    st.success("Row added!")
+
+# Button to save the CSV to Hugging Face repository
+if st.button("Save to Hugging Face Repository"):
+    try:
+        save_to_repo()
+        st.success(f"CSV saved to Hugging Face repository: {repo_name}")
+    except Exception as e:
+        st.error(f"Failed to save to repository: {e}")
+
+# Display the current CSV in the app
+st.write("Current CSV:")
+st.dataframe(df)
