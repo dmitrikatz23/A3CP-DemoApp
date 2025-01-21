@@ -3,12 +3,24 @@ from pathlib import Path
 
 # --- Layout Configuration ---
 st.set_page_config(
-    page_title="Action Recording App",
+    page_title="A3CP Action Recording App",
     layout="centered",
     initial_sidebar_state="auto",
 )
+# hamburger menu more prominent
+st.markdown(
+    """
+    <div style="text-align: center; margin-top: 10px;">
+        <p style="font-size: 0.9em; color: #1E3A8A;">
+            📖 Use the menu in the top-left corner to navigate!
+        </p>
+    </div>
+    """,
+    unsafe_allow_html=True
+)
 
-# --- Custom CSS Styling (Optional) ---
+
+# --- Custom CSS Styling ---
 st.markdown(
     """
     <style>
@@ -48,17 +60,18 @@ st.markdown(
         width: 60%;
         font-size: 1.2em;
         padding: 0.6em;
-        background-color: #4B9CD3;
-        color: white;
+        background-color: white; /* White background */
+        color: #1E3A8A; /* Dark blue text */
         border-radius: 8px;
-        border: none;
+        border: 2px solid #1E3A8A; /* Blue outline */
         text-align: center;
         font-weight: bold;
         cursor: pointer;
         text-decoration: none;
     }
     .landing-button:hover {
-        background-color: #33739C;
+        background-color: #E5EFFF; /* Light blue on hover */
+        color: #1E3A8A;
     }
     </style>
     """,
@@ -77,9 +90,9 @@ with st.container():
     st.markdown(
         """
         <p class='landing-text'>
-        This application allows you to <b>record actions</b> (gestures, poses, etc.) using your webcam and 
-        automatically detect keyframes using velocity and acceleration thresholds. 
-        Each recorded frame is stored in a CSV file along with pose, hand, and face landmark data for future analysis.
+        This application allows you to name an action, record it (gestures, poses, etc.) using your webcam and 
+        automatically detect keyframes using velocity and acceleration thresholds.  
+        Each recorded frame is converted to numbers (vectorized), then stored in a CSV file for future analysis. No video is stored.
         </p>
         """,
         unsafe_allow_html=True
@@ -100,9 +113,9 @@ with st.container():
         unsafe_allow_html=True
     )
 
-    # Button to Go to Record Actions Page (if using Streamlit multipage)
+    # Button to Go to Record Actions Page
     st.markdown(
-        "<a class='landing-button' href='./1_RecordActions'>Go to Recording Page</a>",
+        "<a class='landing-button' href='pages/1_RecordActions.py'>Go to Recording Page to Start</a>",
         unsafe_allow_html=True
     )
 
