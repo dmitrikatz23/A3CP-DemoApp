@@ -12,7 +12,7 @@ st.set_page_config(
 st.markdown(
     """
     <div style="text-align: center; margin-top: 14px;">
-        <p style="font-size: 2em; color: #1E3A8A;">
+        <p style="font-size: 1em; color: #1E3A8A;">
             <- Use the menu in the top-left corner to navigate!
         </p>
     </div>
