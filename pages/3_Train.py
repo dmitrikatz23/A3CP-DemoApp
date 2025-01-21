@@ -15,7 +15,7 @@ import av
 import cv2
 import numpy as np
 import streamlit as st
-from streamlit_webrtc import WebRtcMode, webrtc_streamer
+from streamlit_webrtc import WebRtcMode, webrtc_streamer, VideoProcessorBase
 import re
 
 import csv
@@ -51,14 +51,10 @@ st.set_page_config(layout="wide")
 mp_drawing = mp.solutions.drawing_utils
 mp_holistic = mp.solutions.holistic
 
-# Number of landmarks in various MediaPipe models
 num_pose_landmarks = 33
 num_hand_landmarks_per_hand = 21
 num_face_landmarks = 468
 
-# -----------------------------------
-# Angle Names for Hands
-# -----------------------------------
 angle_names_base = [
     'thumb_mcp', 'thumb_ip',
     'index_mcp', 'index_pip', 'index_dip',
@@ -69,9 +65,6 @@ angle_names_base = [
 left_hand_angle_names = [f'left_{name}' for name in angle_names_base]
 right_hand_angle_names = [f'right_{name}' for name in angle_names_base]
 
-# -----------------------------------
-# Landmark Header Definitions
-# -----------------------------------
 pose_landmarks = [f'pose_{axis}{i}' for i in range(1, num_pose_landmarks+1) for axis in ['x', 'y', 'v']]
 left_hand_landmarks = [f'left_hand_{axis}{i}' for i in range(1, num_hand_landmarks_per_hand+1) for axis in ['x', 'y', 'v']]
 right_hand_landmarks = [f'right_hand_{axis}{i}' for i in range(1, num_hand_landmarks_per_hand+1) for axis in ['x', 'y', 'v']]
@@ -117,52 +110,40 @@ holistic_model = load_mediapipe_model()
 # Helper Functions
 # -----------------------------------
 def calculate_angle(a, b, c):
-    """
-    Calculate the angle formed at point b by (a -> b -> c).
-    Returns angle in degrees (0-180).
-    """
-    a = np.array(a)
-    b = np.array(b)
-    c = np.array(c)
-    radians = np.arctan2(c[1] - b[1], c[0] - b[0]) - np.arctan2(a[1] - b[1], a[0] - b[0])
+    """Calculate angle formed at b by (a->b->c)."""
+    a, b, c = np.array(a), np.array(b), np.array(c)
+    radians = np.arctan2(c[1]-b[1], c[0]-b[0]) - np.arctan2(a[1]-b[1], a[0]-b[0])
     angle = np.abs(radians * 180.0 / np.pi)
-    if angle > 180.0:
-        angle = 360 - angle
-    return angle
+    return 360 - angle if angle > 180 else angle
 
 def hand_angles(hand_landmarks):
-    """
-    Calculate angles for each finger joint using hand landmarks.
-    Returns a list of angles for all joints in the expected order.
-    """
+    """Calculate angles for each finger joint using hand landmarks."""
     if (not hand_landmarks) or all((p[0] == 0 and p[1] == 0 and p[2] == 0) for p in hand_landmarks):
         return [0] * len(angle_names_base)
 
-    # Convert list of landmarks into a dict for easy indexing
     h = {i: hand_landmarks[i] for i in range(len(hand_landmarks))}
-    def pt(i):
-        return [h[i][0], h[i][1]]
+    def pt(i): return [h[i][0], h[i][1]]
 
-    # Thumb angles
+    # Thumb
     thumb_mcp = calculate_angle(pt(1), pt(2), pt(3))
-    thumb_ip  = calculate_angle(pt(2), pt(3), pt(4))
+    thumb_ip = calculate_angle(pt(2), pt(3), pt(4))
 
-    # Index finger angles
+    # Index
     index_mcp = calculate_angle(pt(0), pt(5), pt(6))
     index_pip = calculate_angle(pt(5), pt(6), pt(7))
     index_dip = calculate_angle(pt(6), pt(7), pt(8))
 
-    # Middle finger angles
+    # Middle
     middle_mcp = calculate_angle(pt(0), pt(9), pt(10))
     middle_pip = calculate_angle(pt(9), pt(10), pt(11))
     middle_dip = calculate_angle(pt(10), pt(11), pt(12))
 
-    # Ring finger angles
+    # Ring
     ring_mcp = calculate_angle(pt(0), pt(13), pt(14))
     ring_pip = calculate_angle(pt(13), pt(14), pt(15))
     ring_dip = calculate_angle(pt(14), pt(15), pt(16))
 
-    # Little finger angles
+    # Little
     little_mcp = calculate_angle(pt(0), pt(17), pt(18))
     little_pip = calculate_angle(pt(17), pt(18), pt(19))
     little_dip = calculate_angle(pt(18), pt(19), pt(20))
@@ -175,23 +156,15 @@ def hand_angles(hand_landmarks):
         little_mcp, little_pip, little_dip
     ]
 
-def process_frame(frame):
+def process_frame(frame_bgr):
     """
     Process a single BGR frame with MediaPipe Holistic.
-    Returns:
-        annotated_image: The original frame annotated with landmarks.
-        pose_data: 2D + visibility for each pose landmark.
-        left_hand_data: 2D + visibility for each landmark in the left hand.
-        left_hand_angles_data: The angles computed for the left hand joints.
-        right_hand_data: 2D + visibility for each landmark in the right hand.
-        right_hand_angles_data: The angles computed for the right hand joints.
-        face_data: 2D + visibility for each face landmark.
+    Returns annotated_image + all landmarks data.
     """
-    image_rgb = cv2.cvtColor(frame, cv2.COLOR_BGR2RGB)
+    image_rgb = cv2.cvtColor(frame_bgr, cv2.COLOR_BGR2RGB)
     results = holistic_model.process(image_rgb)
     annotated_image = cv2.cvtColor(image_rgb, cv2.COLOR_RGB2BGR)
 
-    # Draw landmarks if available
     if results.face_landmarks:
         mp_drawing.draw_landmarks(annotated_image, results.face_landmarks, mp_holistic.FACEMESH_TESSELATION)
     if results.left_hand_landmarks:
@@ -202,7 +175,7 @@ def process_frame(frame):
         mp_drawing.draw_landmarks(annotated_image, results.pose_landmarks, mp_holistic.POSE_CONNECTIONS)
 
     def extract_data(landmarks, count):
-        return [[lm.x, lm.y, lm.visibility] for lm in landmarks.landmark] if landmarks else [[0, 0, 0]] * count
+        return [[lm.x, lm.y, lm.visibility] for lm in landmarks.landmark] if landmarks else [[0,0,0]]*count
 
     pose_data = extract_data(results.pose_landmarks, num_pose_landmarks)
     left_hand_data = extract_data(results.left_hand_landmarks, num_hand_landmarks_per_hand)
@@ -230,9 +203,7 @@ def flatten_landmarks(
     right_hand_angles_data,
     face_data
 ):
-    """
-    Flatten all landmark data and angles into a single 1D list.
-    """
+    """Flatten all landmark data and angles into a single 1D list."""
     pose_flat = [val for landmark in pose_data for val in landmark]
     left_hand_flat = [val for landmark in left_hand_data for val in landmark]
     right_hand_flat = [val for landmark in right_hand_data for val in landmark]
@@ -241,72 +212,72 @@ def flatten_landmarks(
     face_flat = [val for landmark in face_data for val in landmark]
 
     return (
-        pose_flat +
-        left_hand_flat +
-        left_hand_angles_flat +
-        right_hand_flat +
-        right_hand_angles_flat +
-        face_flat
+        pose_flat
+        + left_hand_flat
+        + left_hand_angles_flat
+        + right_hand_flat
+        + right_hand_angles_flat
+        + face_flat
     )
 
 def calculate_velocity(landmarks):
-    """
-    Calculate velocity from landmark coordinates (frame-to-frame displacement).
-    Expected input: NxM array (N frames, M features).
-    """
+    """Calculate velocity from NxM landmark array."""
     velocities = []
     for i in range(1, len(landmarks)):
-        velocity = np.linalg.norm(landmarks[i] - landmarks[i-1])
-        velocities.append(velocity)
+        velocities.append(np.linalg.norm(landmarks[i] - landmarks[i-1]))
     return np.array(velocities)
 
 def calculate_acceleration(velocities):
-    """
-    Calculate acceleration from velocity (frame-to-frame change in velocity).
-    """
+    """Calculate acceleration from velocity array."""
     accelerations = []
     for i in range(1, len(velocities)):
-        acceleration = np.abs(velocities[i] - velocities[i-1])
-        accelerations.append(acceleration)
+        accelerations.append(np.abs(velocities[i] - velocities[i-1]))
     return np.array(accelerations)
 
-def identify_keyframes(
-    landmarks,
-    velocity_threshold=0.1,
-    acceleration_threshold=0.1
-):
-    """
-    Identify keyframes based on velocity and acceleration thresholds.
-    `landmarks` is a NxM array representing frames (N) by flattened features (M).
-    """
+def identify_keyframes(landmarks, velocity_threshold=0.1, acceleration_threshold=0.1):
+    """Identify keyframes based on velocity/acceleration thresholds."""
     velocities = calculate_velocity(landmarks)
     accelerations = calculate_acceleration(velocities)
     keyframes = []
     for i in range(len(accelerations)):
         if velocities[i] > velocity_threshold or accelerations[i] > acceleration_threshold:
-            keyframes.append(i + 1)  # +1 offset because acceleration index starts at 1
+            keyframes.append(i+1)  # +1 offset
     return keyframes
 
 # -----------------------------------
-# WebRTC Video Callback
+# Custom Video Processor
 # -----------------------------------
-def video_frame_callback(frame: av.VideoFrame) -> av.VideoFrame:
+class HolisticFrameProcessor(VideoProcessorBase):
     """
-    WebRTC callback that uses MediaPipe Holistic to process frames in real-time.
-    Returns an annotated frame.
+    Custom VideoProcessor that collects frames + landmarks for later processing.
     """
-    input_bgr = frame.to_ndarray(format="bgr24")
-    (
-        annotated_image,
-        _pose_data,
-        _left_hand_data,
-        _left_hand_angles,
-        _right_hand_data,
-        _right_hand_angles,
-        _face_data
-    ) = process_frame(input_bgr)
+    def __init__(self):
+        self.collected_frames = []
+    
+    def recv(self, frame: av.VideoFrame) -> av.VideoFrame:
+        frame_bgr = frame.to_ndarray(format="bgr24")
+        (
+            annotated_image,
+            pose_data,
+            left_hand_data,
+            left_hand_angles_data,
+            right_hand_data,
+            right_hand_angles_data,
+            face_data
+        ) = process_frame(frame_bgr)
 
-    return av.VideoFrame.from_ndarray(annotated_image, format="bgr24")
+        # Store the landmark data (excluding annotated image) in memory
+        self.collected_frames.append(
+            (
+                pose_data,
+                left_hand_data,
+                left_hand_angles_data,
+                right_hand_data,
+                right_hand_angles_data,
+                face_data
+            )
+        )
+        return av.VideoFrame.from_ndarray(annotated_image, format="bgr24")
 
 # -----------------------------------
 # CSV Setup
@@ -315,7 +286,6 @@ csv_folder = "csv"
 if not os.path.exists(csv_folder):
     os.makedirs(csv_folder)
 
-# If a CSV file hasn't been set in session state, create one with a timestamped name
 if "csv_file" not in st.session_state:
     session_start_str = datetime.now().strftime("%Y-%m-%d_%H-%M-%S")
     st.session_state["csv_file"] = os.path.join(csv_folder, f"all_actions_recorded_{session_start_str}.csv")
@@ -348,27 +318,21 @@ local_repo_path = "local_repo"
 git_user = "A3CP_bot"  # Generic username for commits
 git_email = "no-reply@huggingface.co"  # Generic email for commits
 
-# Clone or create the repository
 repo = Repository(local_dir=local_repo_path, clone_from=repo_name, use_auth_token=hf_token, repo_type="dataset")
 repo.git_config_username_and_email(git_user, git_email)
 
 def save_csv_to_huggingface():
-    """
-    Saves the local CSV file to the Hugging Face dataset repository.
-    """
+    """Saves the local CSV file to the Hugging Face dataset repository."""
     if not os.path.exists(csv_file):
         st.warning("No CSV file found to save.")
         return
 
-    # Copy local CSV to repo directory
     os.makedirs(local_repo_path, exist_ok=True)
     repo_file_path = os.path.join(local_repo_path, os.path.basename(csv_file))
 
-    # Load the updated CSV from local storage
     df = pd.read_csv(csv_file)
     df.to_csv(repo_file_path, index=False)
 
-    # Commit and push
     repo.git_add(os.path.basename(csv_file))
     repo.git_commit("Update actions CSV")
     repo.git_push()
@@ -378,7 +342,6 @@ def save_csv_to_huggingface():
 # -----------------------------------
 st.title("Record an Action")
 
-# Initialize session state variables for handling actions, sequences, etc.
 if 'actions' not in st.session_state:
     st.session_state['actions'] = {}
 if 'record_started' not in st.session_state:
@@ -391,7 +354,7 @@ if 'active_streamer_key' not in st.session_state:
     st.session_state['active_streamer_key'] = None
 
 left_col, right_col = st.columns([1, 2])
-FRAME_WINDOW = right_col.image([])
+FRAME_WINDOW = right_col.empty()
 status_bar = right_col.empty()
 
 file_exists = os.path.isfile(csv_file)
@@ -409,13 +372,12 @@ with left_col:
         sanitized_action_word = re.sub(r'[^a-zA-Z0-9_]', '_', action_word.strip())
 
         # If an active streamer already exists, clear its state
-        if st.session_state.get('active_streamer_key') is not None:
+        if st.session_state.get('active_streamer_key'):
             st.session_state['action_confirmed'] = False
             old_key = st.session_state['active_streamer_key']
             if old_key in st.session_state:
                 del st.session_state[old_key]
 
-        # Prepare for a new action
         st.session_state['actions'][action_word] = None
         st.session_state['action_confirmed'] = True
         st.session_state['active_streamer_key'] = f"record-actions-{sanitized_action_word}"
@@ -425,18 +387,30 @@ with left_col:
     if st.session_state.get('action_confirmed', False):
         streamer_key = st.session_state['active_streamer_key']
         st.info(f"Streaming activated! Perform the action: {action_word}")
-
-        # Launch Streamlit WebRTC streamer
-        webrtc_streamer(
+        
+        # Start the streamer with our custom video processor
+        webrtc_ctx = webrtc_streamer(
             key=streamer_key,
             mode=WebRtcMode.SENDRECV,
             rtc_configuration={"iceServers": get_ice_servers(), "iceTransportPolicy": "relay"},
             media_stream_constraints={"video": True, "audio": False},
-            video_frame_callback=video_frame_callback,
+            video_processor_factory=HolisticFrameProcessor,
             async_processing=True,
         )
 
-    # Add button to push CSV to Hugging Face
+        # Button to stop recording and store frames in session state
+        if st.button("Stop Recording"):
+            if webrtc_ctx.state.playing and webrtc_ctx.video_processor:
+                frames_collected = webrtc_ctx.video_processor.collected_frames
+                webrtc_ctx.video_processor.collected_frames = []  # reset
+
+                # Store frames in session state for this action
+                st.session_state['actions'][action_word] = frames_collected
+                st.success(f"Recorded frames saved for action '{action_word}'!")
+            else:
+                st.warning("No frames collected or streamer not active.")
+
+    # Button to push CSV to Hugging Face
     if st.button("Save CSV to Hugging Face"):
         try:
             save_csv_to_huggingface()
@@ -449,16 +423,13 @@ with left_col:
 # -----------------------------------
 st.header("Recorded Actions")
 
-# If there are recorded actions, process them
 if st.session_state['actions']:
     all_rows = []
 
     # Iterate over each action in the session
     for action, all_frames in st.session_state['actions'].items():
-        # Only proceed if we actually have frames for this action
         if all_frames is not None and len(all_frames) > 1:
             flat_landmarks_per_frame = []
-
             # Flatten each frame's landmarks for later keyframe detection
             for f in all_frames:
                 (
@@ -513,7 +484,7 @@ if st.session_state['actions']:
                     row = [action, st.session_state['sequence_id']] + row_data
                     all_rows.append(row)
 
-    # Write new rows to CSV if there are any
+    # Write new rows to CSV if any
     if all_rows:
         with open(csv_file, mode='a', newline='') as f:
             csv_writer = csv.writer(f)
@@ -538,6 +509,7 @@ if st.session_state['actions']:
                         unsafe_allow_html=True
                     )
 
+    else:
+        st.warning("No keyframes were identified. Try performing a more dynamic gesture.")
 else:
-    # No actions recorded yet
     st.info("No actions recorded yet.")
