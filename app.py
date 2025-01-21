@@ -1,4 +1,5 @@
 import streamlit as st
+from pathlib import Path
 
 # --- Layout Configuration ---
 st.set_page_config(
@@ -6,8 +7,7 @@ st.set_page_config(
     layout="centered",
     initial_sidebar_state="auto",
 )
-
-# Hamburger menu prompt
+# hamburger menu more prominent
 st.markdown(
     """
     <div style="text-align: center; margin-top: 14px;">
@@ -18,6 +18,7 @@ st.markdown(
     """,
     unsafe_allow_html=True
 )
+
 
 # --- Custom CSS Styling ---
 st.markdown(
@@ -79,6 +80,8 @@ st.markdown(
 
 # --- Main Container ---
 with st.container():
+    #st.markdown("<div class='landing-container'>", unsafe_allow_html=True)
+
     # Title & Subtitle
     st.markdown("<h1 class='landing-title'>Welcome to the A3CP Action Mapping App!</h1>", unsafe_allow_html=True)
     st.markdown("<h3 class='landing-subtitle'>Capture and visualize non-verbal gestural communication</h3>", unsafe_allow_html=True)
@@ -109,14 +112,10 @@ with st.container():
         unsafe_allow_html=True
     )
 
-    # Styled Button with Navigation
+    # Button to Go to Record Actions Page
     st.markdown(
-        """
-        <a href='/' onclick="window.location.reload()" class='landing-button'>Go to Recording Page to Start</a>
-        """,
+        "<a class='landing-button' href='?page=RecordActions'>Go to Recording Page to Start</a>",
         unsafe_allow_html=True
     )
 
----
-
-Ensure that CSS styles are tightly maintained as code styles .
+    st.markdown("</div>", unsafe_allow_html=True)
