@@ -39,8 +39,8 @@ st.markdown(
     }
     .stButton > button:hover {
         font-weight: bold; /* Bold text on hover */
-        background-color: #4CAF50; /* green background on hover */
-        color: white; /* White text on hover */
+        color: green; /* green text on hover */
+        border: 3px solid green; /* green border */
 
     }
     </style>
