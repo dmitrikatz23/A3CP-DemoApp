@@ -3,7 +3,7 @@ from streamlit_extras.switch_page_button import switch_page
 
 # --- Layout Configuration ---
 st.set_page_config(
-    page_title="A3CP Action Recording App",
+    page_title="A3CP App",
     layout="centered",
     initial_sidebar_state="auto",
 )
@@ -22,8 +22,18 @@ st.markdown(
 
 # --- Custom CSS Styling ---
 st.markdown(
+    
     """
     <style>
+    
+    .landing-title {
+        font-size: 3em;
+        font-weight: bold;
+        color: #1E3A8A; /* Updated to dark blue */
+        margin-bottom: 0.2em;
+        text-align: center;
+        font-family: "Helvetica Neue", Arial, sans-serif;
+    }    
     .stButton > button {
         display: block;
         margin: 20px auto; /* Center the button */
