@@ -80,19 +80,18 @@ st.markdown(
 
 # --- Main Container ---
 with st.container():
-    st.markdown("<div class='landing-container'>", unsafe_allow_html=True)
+    #st.markdown("<div class='landing-container'>", unsafe_allow_html=True)
 
     # Title & Subtitle
-    st.markdown("<h1 class='landing-title'>Welcome to the Action Recording App!</h1>", unsafe_allow_html=True)
-    st.markdown("<h3 class='landing-subtitle'>Capture and analyze actions with MediaPipe Holistic</h3>", unsafe_allow_html=True)
+    st.markdown("<h1 class='landing-title'>Welcome to the A3CP Action Mapping App!</h1>", unsafe_allow_html=True)
+    st.markdown("<h3 class='landing-subtitle'>Capture and visualize non-verbal gestural communication</h3>", unsafe_allow_html=True)
 
     # Introductory Text
     st.markdown(
         """
         <p class='landing-text'>
-        This application allows you to name an action, record it (gestures, poses, etc.) using your webcam and 
-        automatically detect keyframes using velocity and acceleration thresholds.  
-        Each recorded frame is converted to numbers (vectorized), then stored in a CSV file for future analysis. No video is stored.
+        This application allows you to name a non-verbal expression of an action, record it using your webcam. 
+        Each recorded frame is converted to numbers (vectorized), then stored for future analysis. No video is stored.
         </p>
         """,
         unsafe_allow_html=True
