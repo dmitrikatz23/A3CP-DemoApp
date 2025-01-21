@@ -7,3 +7,4 @@ numpy
 mediapipe
 cvzone
 streamlit-extras
+huggingface_hub

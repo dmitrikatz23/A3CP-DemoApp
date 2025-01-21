@@ -30,6 +30,11 @@ sys.path.append(str(Path(__file__).resolve().parent.parent))
 from sample_utils.download import download_file
 from sample_utils.turn import get_ice_servers
 
+# ---------------------------
+# Additional Hugging Face Imports
+# ---------------------------
+from huggingface_hub import Repository
+
 # -----------------------------------
 # Logging Setup
 # -----------------------------------
@@ -55,10 +60,10 @@ num_face_landmarks = 468
 # Angle Names for Hands
 # -----------------------------------
 angle_names_base = [
-    'thumb_mcp', 'thumb_ip', 
+    'thumb_mcp', 'thumb_ip',
     'index_mcp', 'index_pip', 'index_dip',
-    'middle_mcp', 'middle_pip', 'middle_dip', 
-    'ring_mcp', 'ring_pip', 'ring_dip', 
+    'middle_mcp', 'middle_pip', 'middle_dip',
+    'ring_mcp', 'ring_pip', 'ring_dip',
     'little_mcp', 'little_pip', 'little_dip'
 ]
 left_hand_angle_names = [f'left_{name}' for name in angle_names_base]
@@ -333,6 +338,44 @@ def initialize_csv(file_name, header):
 if "csv_initialized" not in st.session_state:
     st.session_state["csv_initialized"] = initialize_csv(csv_file, header)
 
+# ---------------------------
+# Hugging Face Setup
+# ---------------------------
+hf_token = os.getenv("Recorded_Datasets")
+if not hf_token:
+    st.error("Hugging Face token not found. Please ensure it's set as 'Recorded_Datasets' in your Space secrets.")
+    st.stop()
+
+repo_name = "dk23/A3CP_actions"  # Your HF Dataset Repository
+local_repo_path = "local_repo"
+git_user = "A3CP_bot"  # Generic username for commits
+git_email = "no-reply@huggingface.co"  # Generic email for commits
+
+# Clone or create the repository
+repo = Repository(local_dir=local_repo_path, clone_from=repo_name, use_auth_token=hf_token, repo_type="dataset")
+repo.git_config_username_and_email(git_user, git_email)
+
+def save_csv_to_huggingface():
+    """
+    Saves the local CSV file to the Hugging Face dataset repository.
+    """
+    if not os.path.exists(csv_file):
+        st.warning("No CSV file found to save.")
+        return
+
+    # Copy local CSV to repo directory
+    os.makedirs(local_repo_path, exist_ok=True)
+    repo_file_path = os.path.join(local_repo_path, os.path.basename(csv_file))
+
+    # Load the updated CSV from local storage
+    df = pd.read_csv(csv_file)
+    df.to_csv(repo_file_path, index=False)
+
+    # Commit and push
+    repo.git_add(os.path.basename(csv_file))
+    repo.git_commit("Update actions CSV")
+    repo.git_push()
+
 # -----------------------------------
 # Streamlit UI and Logic
 # -----------------------------------
@@ -395,6 +438,14 @@ with left_col:
             video_frame_callback=video_frame_callback,
             async_processing=True,
         )
+
+    # Add button to push CSV to Hugging Face
+    if st.button("Save CSV to Hugging Face"):
+        try:
+            save_csv_to_huggingface()
+            st.success(f"CSV successfully saved to {repo_name}")
+        except Exception as e:
+            st.error(f"Error saving to repository: {e}")
 
 # -----------------------------------
 # Right/Main Area: Recorded Actions
