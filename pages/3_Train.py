@@ -1,15 +1,7 @@
-
-#import streamlit as st
-#st.title('this page will let the user try the app and see if it can identify the mapped meaning of their actions ')
-
-# -----------------------------------
-# Imports
-# -----------------------------------
 import logging
 import queue
 from pathlib import Path
 from typing import List, NamedTuple
-
 import mediapipe as mp
 import av
 import cv2
@@ -17,7 +9,6 @@ import numpy as np
 import streamlit as st
 from streamlit_webrtc import WebRtcMode, webrtc_streamer
 import re
-
 import csv
 import time
 import pandas as pd
@@ -318,9 +309,10 @@ def initialize_csv(file_name, header):
     """
     Initialize the CSV file with the header row if it doesn't exist.
     """
-    with open(file_name, mode='w', newline='') as f:
-        csv_writer = csv.writer(f)
-        csv_writer.writerow(header)
+    if not os.path.exists(file_name):
+        with open(file_name, mode='w', newline='') as f:
+            csv_writer = csv.writer(f)
+            csv_writer.writerow(header)
     return True
 
 if "csv_initialized" not in st.session_state:
@@ -330,6 +322,7 @@ if "csv_initialized" not in st.session_state:
 # Hugging Face Setup
 # -----------------------------------
 hf_token = os.getenv("Recorded_Datasets")  # Must be set in your HF Spaces secrets
+
 repo = None
 if hf_token:
     repo_name = "dk23/A3CP_actions"  # Your dataset repository
@@ -508,24 +501,23 @@ if st.session_state['actions']:
 
     # Write new rows to CSV if there are any
     if all_rows:
-        # Save new rows to the CSV
         with open(csv_file, mode='a', newline='') as f:
             csv_writer = csv.writer(f)
             csv_writer.writerows(all_rows)
 
         st.success(f"All recorded actions appended to '{csv_file}'")
 
-        # Display a summary of recorded actions
+    # Show a summary and the entire CSV
+    if os.path.exists(csv_file):
         df = pd.read_csv(csv_file)
 
-        # Group unique actions
+        # Display a summary of recorded actions
         unique_actions = df['class'].unique()
+        st.header("Recorded Actions Summary")
         num_actions = len(unique_actions)
         num_cols = 8
         num_rows = (num_actions + num_cols - 1) // num_cols
 
-        # Display actions in a grid
-        st.header("Recorded Actions Summary")
         for r in range(num_rows):
             row_actions = unique_actions[r * num_cols:(r + 1) * num_cols]
             cols = st.columns(num_cols)
@@ -535,6 +527,10 @@ if st.session_state['actions']:
                         f"<h4 style='margin:10px; text-align:center; font-family:sans-serif;'>{a}</h4>",
                         unsafe_allow_html=True
                     )
+
+        # Display the entire CSV for reference
+        st.subheader("Full CSV Data")
+        st.dataframe(df)
 
 else:
     # No actions recorded yet
