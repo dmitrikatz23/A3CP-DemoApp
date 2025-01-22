@@ -290,9 +290,7 @@ def video_frame_callback(frame: av.VideoFrame) -> av.VideoFrame:
         face_data
     ) = process_frame(input_bgr)
 
-    # ------------------------------------------------------
-    # ADDED: Collect frames for the currently confirmed action
-    # ------------------------------------------------------
+    # Collect frames for the currently confirmed action
     if st.session_state.get('action_confirmed') and st.session_state.get('current_action'):
         action_word = st.session_state['current_action']
         frames_collector = st.session_state['actions'].get(action_word, [])
@@ -307,7 +305,6 @@ def video_frame_callback(frame: av.VideoFrame) -> av.VideoFrame:
             )
         )
         st.session_state['actions'][action_word] = frames_collector
-    # ------------------------------------------------------
 
     return av.VideoFrame.from_ndarray(annotated_image, format="bgr24")
 
@@ -387,6 +384,82 @@ def save_csv_to_huggingface():
         st.error(f"Error saving to repository: {ex}")
 
 # -----------------------------------
+# NEW: Process Keyframes Function
+# -----------------------------------
+def process_and_save_rows():
+    """
+    Processes recorded actions, identifies keyframes, and writes rows to the CSV.
+    """
+    all_rows = []
+
+    if st.session_state['actions']:
+        # Iterate over each action
+        for action, all_frames in st.session_state['actions'].items():
+            if all_frames and len(all_frames) > 1:
+                flat_landmarks_per_frame = []
+
+                for f in all_frames:
+                    (
+                        pose_data,
+                        left_hand_data,
+                        left_hand_angles_data,
+                        right_hand_data,
+                        right_hand_angles_data,
+                        face_data
+                    ) = f
+
+                    flattened = flatten_landmarks(
+                        pose_data,
+                        left_hand_data,
+                        left_hand_angles_data,
+                        right_hand_data,
+                        right_hand_angles_data,
+                        face_data
+                    )
+                    flat_landmarks_per_frame.append(flattened)
+
+                flat_landmarks_per_frame = np.array(flat_landmarks_per_frame)
+
+                # Identify keyframes
+                keyframes = identify_keyframes(
+                    flat_landmarks_per_frame,
+                    velocity_threshold=0.1,
+                    acceleration_threshold=0.1
+                )
+
+                # Append rows for each keyframe
+                for kf in keyframes:
+                    if kf < len(all_frames):
+                        st.session_state['sequence_id'] += 1
+                        (
+                            pose_data,
+                            left_hand_data,
+                            left_hand_angles_data,
+                            right_hand_data,
+                            right_hand_angles_data,
+                            face_data
+                        ) = all_frames[kf]
+
+                        row_data = flatten_landmarks(
+                            pose_data,
+                            left_hand_data,
+                            left_hand_angles_data,
+                            right_hand_data,
+                            right_hand_angles_data,
+                            face_data
+                        )
+                        row = [action, st.session_state['sequence_id']] + row_data
+                        all_rows.append(row)
+
+        # Write rows to the CSV
+        if all_rows:
+            with open(csv_file, mode='a', newline='') as f:
+                csv_writer = csv.writer(f)
+                csv_writer.writerows(all_rows)
+
+            st.success(f"All recorded actions appended to '{csv_file}'")
+
+# -----------------------------------
 # Streamlit UI and Logic
 # -----------------------------------
 st.title("Record an Action")
@@ -429,9 +502,6 @@ with left_col:
                 del st.session_state[old_key]
 
         # Prepare for a new action
-        # ------------------------------------------------
-        # CHANGED: Initialize an empty list for this action
-        # ------------------------------------------------
         st.session_state['current_action'] = action_word
         st.session_state['actions'][action_word] = []
         st.session_state['action_confirmed'] = True
@@ -453,96 +523,27 @@ with left_col:
             async_processing=True,
         )
 
-    # Button to push CSV to Hugging Face
+    # Button to process rows and push CSV to Hugging Face
     if st.button("Save CSV to Hugging Face"):
+        # 1. Process and save keyframe rows
+        process_and_save_rows()
+        # 2. Push the updated CSV
         save_csv_to_huggingface()
 
 # -----------------------------------
-# Right/Main Area: Recorded Actions
+# Right/Main Area: Display Recorded CSV (if any)
 # -----------------------------------
-# If there are recorded actions, process them
-if st.session_state['actions']:
-    all_rows = []
+st.header("Recorded Actions Summary (Current CSV)")
 
-    # Iterate over each action in the session
-    for action, all_frames in st.session_state['actions'].items():
-        # Only proceed if we actually have frames for this action
-        if all_frames is not None and len(all_frames) > 1:
-            flat_landmarks_per_frame = []
-
-            # Flatten each frame's landmarks for later keyframe detection
-            for f in all_frames:
-                (
-                    pose_data,
-                    left_hand_data,
-                    left_hand_angles_data,
-                    right_hand_data,
-                    right_hand_angles_data,
-                    face_data
-                ) = f
-
-                flattened = flatten_landmarks(
-                    pose_data,
-                    left_hand_data,
-                    left_hand_angles_data,
-                    right_hand_data,
-                    right_hand_angles_data,
-                    face_data
-                )
-                flat_landmarks_per_frame.append(flattened)
-
-            flat_landmarks_per_frame = np.array(flat_landmarks_per_frame)
-
-            # Identify keyframes
-            keyframes = identify_keyframes(
-                flat_landmarks_per_frame,
-                velocity_threshold=0.01,
-                acceleration_threshold=0.01
-            )
-
-            # For each keyframe, append a new row to CSV
-            for kf in keyframes:
-                if kf < len(all_frames):
-                    st.session_state['sequence_id'] += 1
-                    (
-                        pose_data,
-                        left_hand_data,
-                        left_hand_angles_data,
-                        right_hand_data,
-                        right_hand_angles_data,
-                        face_data
-                    ) = all_frames[kf]
-
-                    row_data = flatten_landmarks(
-                        pose_data,
-                        left_hand_data,
-                        left_hand_angles_data,
-                        right_hand_data,
-                        right_hand_angles_data,
-                        face_data
-                    )
-                    row = [action, st.session_state['sequence_id']] + row_data
-                    all_rows.append(row)
-
-    # Write new rows to CSV if there are any
-    if all_rows:
-        with open(csv_file, mode='a', newline='') as f:
-            csv_writer = csv.writer(f)
-            csv_writer.writerows(all_rows)
-
-        st.success(f"All recorded actions appended to '{csv_file}'")
-
-    # Show a summary and the entire CSV
-    if os.path.exists(csv_file):
-        df = pd.read_csv(csv_file)
-
-        # Display a summary of recorded actions
+if os.path.exists(csv_file):
+    df = pd.read_csv(csv_file)
+    if not df.empty:
         unique_actions = df['class'].unique()
-        st.header("Recorded Actions Summary")
         num_actions = len(unique_actions)
         num_cols = 8
         num_rows = (num_actions + num_cols - 1) // num_cols
 
+        # Display each unique action in a grid
         for r in range(num_rows):
             row_actions = unique_actions[r * num_cols:(r + 1) * num_cols]
             cols = st.columns(num_cols)
@@ -556,7 +557,7 @@ if st.session_state['actions']:
         # Display the entire CSV for reference
         st.subheader("Full CSV Data")
         st.dataframe(df)
-
+    else:
+        st.info("CSV is initialized but has no data rows yet.")
 else:
-    # No actions recorded yet
-    st.info("No actions recorded yet.")
+    st.info("No CSV file found yet.")
