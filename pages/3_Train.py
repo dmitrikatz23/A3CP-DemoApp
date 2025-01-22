@@ -276,17 +276,38 @@ def video_frame_callback(frame: av.VideoFrame) -> av.VideoFrame:
     """
     WebRTC callback that uses MediaPipe Holistic to process frames in real-time.
     Returns an annotated frame.
+    
+    IMPORTANT: We store each frame's landmarks if an action is confirmed.
     """
     input_bgr = frame.to_ndarray(format="bgr24")
     (
         annotated_image,
-        _pose_data,
-        _left_hand_data,
-        _left_hand_angles,
-        _right_hand_data,
-        _right_hand_angles,
-        _face_data
+        pose_data,
+        left_hand_data,
+        left_hand_angles_data,
+        right_hand_data,
+        right_hand_angles_data,
+        face_data
     ) = process_frame(input_bgr)
+
+    # ------------------------------------------------------
+    # ADDED: Collect frames for the currently confirmed action
+    # ------------------------------------------------------
+    if st.session_state.get('action_confirmed') and st.session_state.get('current_action'):
+        action_word = st.session_state['current_action']
+        frames_collector = st.session_state['actions'].get(action_word, [])
+        frames_collector.append(
+            (
+                pose_data,
+                left_hand_data,
+                left_hand_angles_data,
+                right_hand_data,
+                right_hand_angles_data,
+                face_data
+            )
+        )
+        st.session_state['actions'][action_word] = frames_collector
+    # ------------------------------------------------------
 
     return av.VideoFrame.from_ndarray(annotated_image, format="bgr24")
 
@@ -408,7 +429,11 @@ with left_col:
                 del st.session_state[old_key]
 
         # Prepare for a new action
-        st.session_state['actions'][action_word] = None
+        # ------------------------------------------------
+        # CHANGED: Initialize an empty list for this action
+        # ------------------------------------------------
+        st.session_state['current_action'] = action_word
+        st.session_state['actions'][action_word] = []
         st.session_state['action_confirmed'] = True
         st.session_state['active_streamer_key'] = f"record-actions-{sanitized_action_word}"
         st.success(f"Action '{action_word}' confirmed!")
