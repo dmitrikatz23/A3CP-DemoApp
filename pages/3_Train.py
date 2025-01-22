@@ -1,4 +1,4 @@
-# Page 4: Try it out
+
 #import streamlit as st
 #st.title('this page will let the user try the app and see if it can identify the mapped meaning of their actions ')
 
@@ -442,8 +442,6 @@ with left_col:
 # -----------------------------------
 # Right/Main Area: Recorded Actions
 # -----------------------------------
-st.header("Recorded Actions")
-
 # If there are recorded actions, process them
 if st.session_state['actions']:
     all_rows = []
@@ -510,21 +508,26 @@ if st.session_state['actions']:
 
     # Write new rows to CSV if there are any
     if all_rows:
+        # Save new rows to the CSV
         with open(csv_file, mode='a', newline='') as f:
             csv_writer = csv.writer(f)
             csv_writer.writerows(all_rows)
 
         st.success(f"All recorded actions appended to '{csv_file}'")
 
-        # Display a summary of recorded classes
+        # Display a summary of recorded actions
         df = pd.read_csv(csv_file)
+
+        # Group unique actions
         unique_actions = df['class'].unique()
         num_actions = len(unique_actions)
         num_cols = 8
         num_rows = (num_actions + num_cols - 1) // num_cols
 
+        # Display actions in a grid
+        st.header("Recorded Actions Summary")
         for r in range(num_rows):
-            row_actions = unique_actions[r*num_cols:(r+1)*num_cols]
+            row_actions = unique_actions[r * num_cols:(r + 1) * num_cols]
             cols = st.columns(num_cols)
             for col, a in zip(cols, row_actions):
                 if a:
