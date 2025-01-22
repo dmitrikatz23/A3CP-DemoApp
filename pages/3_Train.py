@@ -496,8 +496,8 @@ if st.session_state['actions']:
             # Identify keyframes
             keyframes = identify_keyframes(
                 flat_landmarks_per_frame,
-                velocity_threshold=0.1,
-                acceleration_threshold=0.1
+                velocity_threshold=0.01,
+                acceleration_threshold=0.01
             )
 
             # For each keyframe, append a new row to CSV
