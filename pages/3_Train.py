@@ -272,16 +272,21 @@ def identify_keyframes(
 # -----------------------------------
 # WebRTC Video Callback
 # -----------------------------------
+logging.basicConfig(level=logging.DEBUG) #for debugging
+
 def video_frame_callback(frame: av.VideoFrame) -> av.VideoFrame:
-    st.text("video_frame_callback is active")  # Debug message
+    
     """
     WebRTC callback that uses MediaPipe Holistic to process frames in real-time.
     Returns an annotated frame.
     
     IMPORTANT: We store each frame's landmarks if an action is confirmed.
     """
+    logging.debug("video_frame_callback is active")  # Debug message
     input_bgr = frame.to_ndarray(format="bgr24")
-    #st.text(f"Frame shape: {input_bgr.shape}")  # Debug message for frame size
+    logging.debug(f"Frame shape: {input_bgr.shape}")  # Debug frame shape
+    logging.debug(f"Frame shape: {input_bgr.shape}")  # Debug frame shape
+
     (
         annotated_image,
         pose_data,
