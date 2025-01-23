@@ -398,6 +398,7 @@ def process_and_save_rows():
     if st.session_state['actions']:
         # Iterate over each action
         for action, all_frames in st.session_state['actions'].items():
+            st.write("All frames for current action:", all_frames)
             if all_frames and len(all_frames) > 1:
                 flat_landmarks_per_frame = []
 
@@ -410,36 +411,7 @@ def process_and_save_rows():
                         right_hand_angles_data,
                         face_data
                     ) = f
-# Testing to inspect data before calling flatten
-                    st.text("Checking variables inside process_and_save_rows:")
-                    if pose_data is None:
-                        st.warning("Pose data is None.")
-                    elif not pose_data:
-                        st.warning("Pose data is empty.")
-                    else:
-                        st.write("Pose data:", pose_data)
 
-                    if left_hand_data is None:
-                        st.warning("Left hand data is None.")
-                    elif not left_hand_data:
-                        st.warning("Left hand data is empty.")
-                    else:
-                        st.write("Left hand data:", left_hand_data)
-
-                    if right_hand_data is None:
-                        st.warning("Right hand data is None.")
-                    elif not right_hand_data:
-                        st.warning("Right hand data is empty.")
-                    else:
-                        st.write("Right hand data:", right_hand_data)
-
-                    if face_data is None:
-                        st.warning("Face data is None.")
-                    elif not face_data:
-                        st.warning("Face data is empty.")
-                    else:
-                        st.write("Face data:", face_data)
-# End testing
                     flattened = flatten_landmarks(
                         pose_data,
                         left_hand_data,
