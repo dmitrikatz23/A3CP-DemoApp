@@ -393,6 +393,7 @@ def process_and_save_rows():
     """
     Processes recorded actions, identifies keyframes, and writes rows to the CSV.
     """
+    st.text("process_and_save_rows() function has been called.")
     all_rows = []
 
     if st.session_state['actions']:
