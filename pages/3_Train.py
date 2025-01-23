@@ -410,7 +410,12 @@ def process_and_save_rows():
                         right_hand_angles_data,
                         face_data
                     ) = f
-
+#testing to inspect data before calling flatten
+                    st.write("Pose data:", pose_data)
+                    st.write("Left hand data:", left_hand_data)
+                    st.write("Right hand data:", right_hand_data)
+                    st.write("Face data:", face_data)
+#end test
                     flattened = flatten_landmarks(
                         pose_data,
                         left_hand_data,
