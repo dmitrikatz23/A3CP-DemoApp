@@ -411,10 +411,12 @@ def process_and_save_rows():
                         face_data
                     ) = f
 #testing to inspect data before calling flatten
-                    st.write("Pose data:", pose_data)
-                    st.write("Left hand data:", left_hand_data)
-                    st.write("Right hand data:", right_hand_data)
-                    st.write("Face data:", face_data)
+                    if pose_data is None:
+                        st.warning("Pose data is None.")
+                    elif not pose_data:
+                        st.warning("Pose data is empty.")
+                    else:
+                        st.write("Pose data:", pose_data)
 #end test
                     flattened = flatten_landmarks(
                         pose_data,
