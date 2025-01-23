@@ -281,7 +281,7 @@ def video_frame_callback(frame: av.VideoFrame) -> av.VideoFrame:
     IMPORTANT: We store each frame's landmarks if an action is confirmed.
     """
     input_bgr = frame.to_ndarray(format="bgr24")
-    st.text(f"Frame shape: {input_bgr.shape}")  # Debug message for frame size
+    #st.text(f"Frame shape: {input_bgr.shape}")  # Debug message for frame size
     (
         annotated_image,
         pose_data,
