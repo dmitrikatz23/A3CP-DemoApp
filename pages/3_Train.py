@@ -457,13 +457,15 @@ def process_and_save_rows():
                         row = [action, st.session_state['sequence_id']] + row_data
                         all_rows.append(row)
 
-        # Write rows to the CSV
+        # Write rows to the CSV new version
         if all_rows:
-            with open(csv_file, mode='a', newline='') as f:
-                csv_writer = csv.writer(f)
-                csv_writer.writerows(all_rows)
-
-            st.success(f"All recorded actions appended to '{csv_file}'")
+            try:
+                with open(csv_file, mode='a', newline='') as f:
+                    csv_writer = csv.writer(f)
+                    csv_writer.writerows(all_rows)
+                st.success(f"All recorded actions appended to '{csv_file}'")
+            except Exception as e:
+                st.error(f"Error writing to CSV: {e}")
 
 # -----------------------------------
 # Streamlit UI and Logic
