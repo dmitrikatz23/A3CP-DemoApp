@@ -397,8 +397,8 @@ def process_and_save_rows():
 
     if st.session_state['actions']:
         # Iterate over each action
+        st.write("Current actions in session state:", st.session_state['actions'])
         for action, all_frames in st.session_state['actions'].items():
-            st.write("All frames for current action:", all_frames)
             if all_frames and len(all_frames) > 1:
                 flat_landmarks_per_frame = []
 
