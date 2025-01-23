@@ -273,7 +273,7 @@ def identify_keyframes(
 # WebRTC Video Callback
 # -----------------------------------
 def video_frame_callback(frame: av.VideoFrame) -> av.VideoFrame:
-    st.text("video_frame_callback is being executed")  # Debug message
+    st.text("video_frame_callback is active")  # Debug message
     """
     WebRTC callback that uses MediaPipe Holistic to process frames in real-time.
     Returns an annotated frame.
@@ -281,6 +281,7 @@ def video_frame_callback(frame: av.VideoFrame) -> av.VideoFrame:
     IMPORTANT: We store each frame's landmarks if an action is confirmed.
     """
     input_bgr = frame.to_ndarray(format="bgr24")
+    st.text(f"Frame shape: {input_bgr.shape}")  # Debug message for frame size
     (
         annotated_image,
         pose_data,
@@ -543,7 +544,6 @@ with left_col:
         st.info(f"Streaming activated! Perform the action: {action_word}")
 
         # Launch Streamlit WebRTC streamer
-        st.info("Initializing WebRTC streamer")  # Debug message before
         webrtc_streamer(
             key=streamer_key,
             mode=WebRtcMode.SENDRECV,
@@ -552,7 +552,6 @@ with left_col:
             video_frame_callback=video_frame_callback,
             async_processing=True,
         )
-        st.info("WebRTC streamer initialized")  # Debug message after
 
     # Button to process rows and push CSV to Hugging Face
     if st.button("Save CSV to Hugging Face"):
