@@ -273,6 +273,7 @@ def identify_keyframes(
 # WebRTC Video Callback
 # -----------------------------------
 def video_frame_callback(frame: av.VideoFrame) -> av.VideoFrame:
+    st.text("video_frame_callback is being executed")  # Debug message
     """
     WebRTC callback that uses MediaPipe Holistic to process frames in real-time.
     Returns an annotated frame.
