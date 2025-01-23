@@ -543,7 +543,7 @@ with left_col:
         st.info(f"Streaming activated! Perform the action: {action_word}")
 
         # Launch Streamlit WebRTC streamer
-        st.text("Initializing WebRTC streamer")  # Debug message before
+        st.info("Initializing WebRTC streamer")  # Debug message before
         webrtc_streamer(
             key=streamer_key,
             mode=WebRtcMode.SENDRECV,
@@ -552,8 +552,8 @@ with left_col:
             video_frame_callback=video_frame_callback,
             async_processing=True,
         )
-        st.text("WebRTC streamer initialized")  # Debug message after
-        
+        st.info("WebRTC streamer initialized")  # Debug message after
+
     # Button to process rows and push CSV to Hugging Face
     if st.button("Save CSV to Hugging Face"):
         # 1. Process and save keyframe rows
