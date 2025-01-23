@@ -305,6 +305,9 @@ def video_frame_callback(frame: av.VideoFrame) -> av.VideoFrame:
             )
         )
         st.session_state['actions'][action_word] = frames_collector
+        # DEBUG: Log collected frames
+        st.write(f"Collected {len(frames_collector)} frames for action: '{action_word}'")  # DEBUG
+
 
     return av.VideoFrame.from_ndarray(annotated_image, format="bgr24")
 
@@ -420,18 +423,14 @@ def process_and_save_rows():
 
                 flat_landmarks_per_frame = np.array(flat_landmarks_per_frame)
 
-                # NEW DEBUGGING STATEMENTS
-                st.write(f"Processing action: '{action}' with {len(all_frames)} frames")  # NEW
-                st.write("Flattening and identifying keyframes...")                       # NEW
-
                 # Identify keyframes
+                st.write(f"Flattening and identifying keyframes for action '{action}'...")  # DEBUG
                 keyframes = identify_keyframes(
                     flat_landmarks_per_frame,
-                    velocity_threshold=0.1,
-                    acceleration_threshold=0.1
+                    velocity_threshold=0.01,  # Lowered threshold for debugging
+                    acceleration_threshold=0.01,
                 )
-                # NEW DEBUGGING STATEMENT
-                st.write(f"Detected {len(keyframes)} keyframes for action '{action}'")    # NEW
+                st.write(f"Detected {len(keyframes)} keyframes for action '{action}'")  # DEBUG
                 
                 # Append rows for each keyframe
                 for kf in keyframes:
@@ -572,6 +571,7 @@ if os.path.exists(csv_file):
 
         # Display the entire CSV for reference
         st.subheader("Full CSV Data")
+        df.reset_index(drop=True, inplace=True)  # Reset index to ensure proper display
         st.dataframe(df)
     else:
         st.info("CSV is initialized but has no data rows yet.")
