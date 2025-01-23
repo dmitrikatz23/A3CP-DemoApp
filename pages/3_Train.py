@@ -305,6 +305,9 @@ def video_frame_callback(frame: av.VideoFrame) -> av.VideoFrame:
             )
         )
         st.session_state['actions'][action_word] = frames_collector
+ 
+ # NEW DEBUGGING STATEMENT
+    st.write(f"Collected frames for action: {st.session_state['current_action']}")  # NEW
 
     return av.VideoFrame.from_ndarray(annotated_image, format="bgr24")
 
@@ -457,13 +460,15 @@ def process_and_save_rows():
                         row = [action, st.session_state['sequence_id']] + row_data
                         all_rows.append(row)
 
-        # Write rows to the CSV
-        if all_rows:
+    # Write rows to the CSV new
+    if all_rows:
+        try:
             with open(csv_file, mode='a', newline='') as f:
                 csv_writer = csv.writer(f)
                 csv_writer.writerows(all_rows)
-
             st.success(f"All recorded actions appended to '{csv_file}'")
+        except Exception as e:
+            st.error(f"Error writing to CSV: {e}")
 
 # -----------------------------------
 # Streamlit UI and Logic
@@ -559,7 +564,8 @@ if os.path.exists(csv_file):
                         f"<h4 style='margin:10px; text-align:center; font-family:sans-serif;'>{a}</h4>",
                         unsafe_allow_html=True
                     )
-
+        
+        df.reset_index(drop=True, inplace=True)  # NEW
         # Display the entire CSV for reference
         st.subheader("Full CSV Data")
         st.dataframe(df)
