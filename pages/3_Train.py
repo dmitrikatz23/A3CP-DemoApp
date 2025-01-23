@@ -421,8 +421,8 @@ def process_and_save_rows():
                 flat_landmarks_per_frame = np.array(flat_landmarks_per_frame)
 
                 # NEW DEBUGGING STATEMENTS
-                <span style="color:green">st.write(f"Processing action: '{action}' with {len(all_frames)} frames")</span>  # NEW
-                <span style="color:green">st.write("Flattening and identifying keyframes...")</span>                       # NEW
+                st.write(f"Processing action: '{action}' with {len(all_frames)} frames")  # NEW
+                st.write("Flattening and identifying keyframes...")                       # NEW
 
                 # Identify keyframes
                 keyframes = identify_keyframes(
@@ -431,7 +431,7 @@ def process_and_save_rows():
                     acceleration_threshold=0.1
                 )
                 # NEW DEBUGGING STATEMENT
-                <span style="color:green">st.write(f"Detected {len(keyframes)} keyframes for action '{action}'")</span>    # NEW
+                st.write(f"Detected {len(keyframes)} keyframes for action '{action}'")    # NEW
                 
                 # Append rows for each keyframe
                 for kf in keyframes:
