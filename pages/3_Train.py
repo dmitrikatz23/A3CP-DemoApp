@@ -464,8 +464,16 @@ def process_and_save_rows():
                     csv_writer = csv.writer(f)
                     csv_writer.writerows(all_rows)
                 st.success(f"All recorded actions appended to '{csv_file}'")
+
+                # DEBUG: Check file contents
+                st.write("Verifying written rows...")
+                with open(csv_file, 'r') as f:
+                    st.text(f.read())
+
             except Exception as e:
                 st.error(f"Error writing to CSV: {e}")
+        else:
+            st.warning("No rows to write to CSV")
 
 # -----------------------------------
 # Streamlit UI and Logic
