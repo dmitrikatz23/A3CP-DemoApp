@@ -299,14 +299,6 @@ def identify_keyframes(
 # -----------------------------------
 logging.basicConfig(level=logging.DEBUG) #for debugging
 
-def video_frame_callback(frame: av.VideoFrame) -> av.VideoFrame:
-    
-    #WebRTC callback that uses MediaPipe Holistic to process frames in real-time.
-    #Returns an annotated frame. Stores each frame's landmarks if an action is confirmed.
-
-    input_bgr = frame.to_ndarray(format="bgr24")
-
-    # Collect frames for the currently confirmed action
 
 def video_frame_callback(frame: av.VideoFrame) -> av.VideoFrame:
     """
@@ -584,34 +576,36 @@ if st.button("Process Frames"):
             st.session_state["actions"][action_word].append(frame_data)
             st.write(f"Added frame for action '{action_word}'. Total frames: {len(st.session_state['actions'][action_word])}")
 
+
+
 # Streamlit Button to Save CSV
-
-import json
-
 if st.button("Save to CSV"):
     logging.debug("Save to CSV button clicked. Processing frames.")
     all_rows = []
 
-    for _ in range(min(50, frame_queue.qsize())):
+    # 1) Limit frames to a smaller batch (up to 50) for debugging
+    frame_count = min(50, frame_queue.qsize())
+    for _ in range(frame_count):
         try:
+            # 2) Retrieve frame from the queue
             frame_data = frame_queue.get()
-            logging.debug(f"Processing frame_data: {frame_data}")
+            logging.debug(f"Dequeued frame_data: {frame_data}")
 
-            # Validate frame_data
+            # 3) Validate frame_data
             is_valid, missing_key = validate_frame_data(frame_data)
             if not is_valid:
                 logging.warning(f"Invalid frame_data: Missing or empty key: {missing_key}")
-                continue  # Skip invalid frame
+                continue  # Skip this invalid frame
 
-            # Log keys and their contents
+            # 4) Log key details
             for key in frame_data.keys():
                 logging.debug(f"{key}: Type={type(frame_data[key])}, Sample={str(frame_data[key])[:100]}")
 
         except Exception as e:
             logging.error(f"Error processing frame_data: {e}")
+            continue
 
-
-        # Process frame_data for CSV if all keys are present
+        # 5) If valid, store the frame data in session state
         if st.session_state.get("action_confirmed") and st.session_state.get("current_action"):
             action_word = st.session_state["current_action"]
             if action_word not in st.session_state["actions"]:
@@ -621,12 +615,11 @@ if st.button("Save to CSV"):
 
     logging.debug("Finished processing frames.")
 
-    
-    # Flatten frames into rows for CSV
+    # 6) Flatten frames into rows for CSV
     if "actions" in st.session_state:
         for action, frames in st.session_state["actions"].items():
             if frames:
-                logging.debug(f"Processing action '{action}' with {len(frames)} frames.")  # Debug info
+                logging.debug(f"Processing action '{action}' with {len(frames)} frames.")
                 for frame_data in frames:
                     row_data = flatten_landmarks(
                         frame_data["pose_data"],
@@ -636,30 +629,39 @@ if st.button("Save to CSV"):
                         frame_data["right_hand_angles_data"],
                         frame_data["face_data"]
                     )
-                    # Add action and sequence ID
                     st.session_state["sequence_id"] += 1
                     row = [action, st.session_state["sequence_id"]] + row_data
                     all_rows.append(row)
 
-    # Write rows to CSV
+    # 7) Write rows to CSV
+    logging.debug(f"Attempting to write {len(all_rows)} rows to CSV.")
     if all_rows:
         try:
             with open(csv_file, mode="a", newline="") as f:
                 csv_writer = csv.writer(f)
                 csv_writer.writerows(all_rows)
             st.success(f"Saved {len(all_rows)} rows to CSV: {csv_file}")
+            logging.info(f"Successfully wrote {len(all_rows)} rows to CSV file: {csv_file}")
         except Exception as e:
             st.error(f"Error writing to CSV: {e}")
+            logging.error(f"CSV write failure: {e}")
     else:
         st.warning("No rows to write to CSV.")
+        logging.warning("No rows were written to CSV because all_rows is empty.")
 
-    # Push to Hugging Face repository if rows were saved
+    # 8) Push to Hugging Face repository if rows were saved
     if all_rows:
+    # Double-check CSV contents
         try:
-            save_csv_to_huggingface()
+            df = pd.read_csv(csv_file)
+            if df.empty:
+                logging.warning("CSV is still empty after writing. Skipping Hugging Face push.")
+            else:
+                logging.debug(f"Local CSV now has {len(df.index)} rows. Attempting push to HF.")
+                save_csv_to_huggingface()
         except Exception as e:
             st.error(f"Error saving to repository: {e}")
-
+            logging.error(f"Hugging Face push error: {e}")
 
 # -----------------------------------
 # Right/Main Area: Display Recorded CSV (if any)
