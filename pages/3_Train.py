@@ -572,32 +572,21 @@ if st.button("Save to CSV"):
     all_rows = []
 
     while not frame_queue.empty():
-        logging.debug(f"Queue size before processing: {frame_queue.qsize()}")
         frame_data = frame_queue.get()
-
-        # Log frame_data as a JSON-like string
-        try:
-            logging.debug(f"Dequeued frame_data: {json.dumps(frame_data, indent=2)}")
-        except TypeError as e:
-            logging.error(f"Error serializing frame_data to JSON: {e}. Raw frame_data: {frame_data}")
-
-        # Check for required keys
+        
+        # Log the structure and type of the frame data
+        logging.debug(f"Processing frame_data: {type(frame_data)}, content: {frame_data}")
+        
+        # Check for required keys and their values
         required_keys = [
             "pose_data", "left_hand_data", "left_hand_angles_data",
             "right_hand_data", "right_hand_angles_data", "face_data"
         ]
-        missing_keys = [key for key in required_keys if key not in frame_data]
-        if missing_keys:
-            logging.error(f"Missing keys in frame_data: {missing_keys}")
-        else:
-            logging.debug("All required keys are present in frame_data.")
-
-        # Log the content of each key if available
         for key in required_keys:
             if key in frame_data:
-                logging.debug(f"{key}: {frame_data[key]}")
+                logging.debug(f"{key}: {type(frame_data[key])}, sample content: {str(frame_data[key])[:200]}")  # Log type and a snippet of content
             else:
-                logging.warning(f"{key} is missing in frame_data.")
+                logging.warning(f"Missing key in frame_data: {key}")
 
         # Process frame_data for CSV if all keys are present
         if st.session_state.get("action_confirmed") and st.session_state.get("current_action"):
