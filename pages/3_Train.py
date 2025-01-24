@@ -283,40 +283,6 @@ def video_frame_callback(frame: av.VideoFrame) -> av.VideoFrame:
 
     # Collect frames for the currently confirmed action
 
-"""
-old block
-    if st.session_state.get('action_confirmed') and st.session_state.get('current_action'):
-        action_word = st.session_state['current_action']
-        frames_collector = st.session_state['actions'].get(action_word, [])
-        
-        # Debug before appending
-        st.write(f"Before appending, '{action_word}' has {len(frames_collector)} frames.")
-
-        frames_collector.append(
-            (
-                pose_data,
-                left_hand_data,
-                left_hand_angles_data,
-                right_hand_data,
-                right_hand_angles_data,
-                face_data
-            )
-        )
-        st.session_state['actions'][action_word] = frames_collector
-       
-           # Debug after appending
-        st.write(f"After appending, '{action_word}' has {len(frames_collector)} frames.")
-        st.write(f"Latest frame data for '{action_word}':", {
-            "pose_data": pose_data,
-            "left_hand_data": left_hand_data,
-            "right_hand_data": right_hand_data,
-            "face_data": face_data
-        })
-
-
-
-    return av.VideoFrame.from_ndarray(annotated_image, format="bgr24")
-"""
 #new test block
 def video_frame_callback(frame: av.VideoFrame) -> av.VideoFrame:
     input_bgr = frame.to_ndarray(format="bgr24")
