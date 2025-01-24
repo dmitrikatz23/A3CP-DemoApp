@@ -629,7 +629,7 @@ if st.button("Save to CSV"):
         for action, frames in st.session_state["actions"].items():
             if frames:
                 logging.debug(f"[Save to CSV] Processing action '{action}' with {len(frames)} frames.")
-                for frame_data in frames:
+                for index, frame_data in enumerate(frames):
                     try:
                         # Flatten landmarks
                         row_data = flatten_landmarks(
@@ -644,9 +644,9 @@ if st.button("Save to CSV"):
                         st.session_state["sequence_id"] += 1
                         row = [action, st.session_state["sequence_id"]] + row_data
                         all_rows.append(row)
-                        logging.debug(f"[Save to CSV] Flattened row added: {row[:10]}...")  # Sample of row data
+                        logging.debug(f"[Save to CSV] Flattened row {index + 1}/{len(frames)} for action '{action}': {row[:10]}...")
                     except Exception as e:
-                        logging.error(f"[Save to CSV] Error flattening frame for action '{action}': {e}")
+                        logging.error(f"[Save to CSV] Error flattening frame {index + 1} for action '{action}': {e}")
 
     # 7) Write rows to CSV
     if all_rows:
