@@ -628,35 +628,40 @@ if st.button("Save to CSV"):
     if "actions" in st.session_state:
         for action, frames in st.session_state["actions"].items():
             if frames:
-                logging.debug(f"Processing action '{action}' with {len(frames)} frames.")
+                logging.debug(f"[Save to CSV] Processing action '{action}' with {len(frames)} frames.")
                 for frame_data in frames:
-                    row_data = flatten_landmarks(
-                        frame_data["pose_data"],
-                        frame_data["left_hand_data"],
-                        frame_data["left_hand_angles_data"],
-                        frame_data["right_hand_data"],
-                        frame_data["right_hand_angles_data"],
-                        frame_data["face_data"]
-                    )
-                    st.session_state["sequence_id"] += 1
-                    row = [action, st.session_state["sequence_id"]] + row_data
-                    all_rows.append(row)
+                    try:
+                        # Flatten landmarks
+                        row_data = flatten_landmarks(
+                            frame_data["pose_data"],
+                            frame_data["left_hand_data"],
+                            frame_data["left_hand_angles_data"],
+                            frame_data["right_hand_data"],
+                            frame_data["right_hand_angles_data"],
+                            frame_data["face_data"]
+                        )
+                        # Add action and sequence ID
+                        st.session_state["sequence_id"] += 1
+                        row = [action, st.session_state["sequence_id"]] + row_data
+                        all_rows.append(row)
+                        logging.debug(f"[Save to CSV] Flattened row added: {row[:10]}...")  # Sample of row data
+                    except Exception as e:
+                        logging.error(f"[Save to CSV] Error flattening frame for action '{action}': {e}")
 
     # 7) Write rows to CSV
-    logging.debug(f"Attempting to write {len(all_rows)} rows to CSV.")
     if all_rows:
         try:
             with open(csv_file, mode="a", newline="") as f:
                 csv_writer = csv.writer(f)
                 csv_writer.writerows(all_rows)
             st.success(f"Saved {len(all_rows)} rows to CSV: {csv_file}")
-            logging.info(f"Successfully wrote {len(all_rows)} rows to CSV file: {csv_file}")
+            logging.info(f"[Save to CSV] Successfully wrote {len(all_rows)} rows to CSV.")
         except Exception as e:
             st.error(f"Error writing to CSV: {e}")
-            logging.error(f"CSV write failure: {e}")
+            logging.error(f"[Save to CSV] CSV write failure: {e}")
     else:
         st.warning("No rows to write to CSV.")
-        logging.warning("No rows were written to CSV because all_rows is empty.")
+        logging.warning("[Save to CSV] No rows were written to CSV because 'all_rows' is empty.")
 
     # 8) Push to Hugging Face repository if rows were saved
     if all_rows:
