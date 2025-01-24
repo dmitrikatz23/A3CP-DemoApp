@@ -572,21 +572,27 @@ if st.button("Save to CSV"):
     while not frame_queue.empty():
         logging.debug(f"Queue size before processing: {frame_queue.qsize()}")
         frame_data = frame_queue.get()
-        
-        # Log entire frame_data for inspection
+
+        # Log frame data details
         logging.debug(f"Dequeued frame_data: {frame_data}")
 
-        # Validate keys in frame_data
+        # Check for required keys
         required_keys = [
             "pose_data", "left_hand_data", "left_hand_angles_data",
             "right_hand_data", "right_hand_angles_data", "face_data"
         ]
+        missing_keys = [key for key in required_keys if key not in frame_data]
+        if missing_keys:
+            logging.error(f"Missing keys in frame_data: {missing_keys}")
+        else:
+            logging.debug("All required keys are present in frame_data.")
+
+        # Log the actual content of each key
         for key in required_keys:
             if key in frame_data:
-                logging.debug(f"Key {key} exists in frame_data. Value: {frame_data[key]}")
-            else:
-                logging.error(f"Key {key} is missing in frame_data.")
+                logging.debug(f"{key}: {frame_data[key]}")
 
+        # Proceed with processing
         if st.session_state.get("action_confirmed") and st.session_state.get("current_action"):
             action_word = st.session_state["current_action"]
             if action_word not in st.session_state["actions"]:
@@ -595,7 +601,7 @@ if st.button("Save to CSV"):
             logging.debug(f"Added frame to action '{action_word}'. Queue size after processing: {frame_queue.qsize()}")
 
     logging.debug("Finished processing frames.")
-
+    
     # Flatten frames into rows for CSV
     if "actions" in st.session_state:
         for action, frames in st.session_state["actions"].items():
