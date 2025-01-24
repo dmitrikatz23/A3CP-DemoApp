@@ -1,5 +1,5 @@
 import logging
-import queue
+from queue import Queue
 from pathlib import Path
 from typing import List, NamedTuple
 import mediapipe as mp
@@ -276,28 +276,15 @@ logging.basicConfig(level=logging.DEBUG) #for debugging
 
 def video_frame_callback(frame: av.VideoFrame) -> av.VideoFrame:
     
-    """
-    WebRTC callback that uses MediaPipe Holistic to process frames in real-time.
-    Returns an annotated frame.
-    
-    IMPORTANT: We store each frame's landmarks if an action is confirmed.
-    """
-    logging.debug("video_frame_callback is active")  # Debug message
-    input_bgr = frame.to_ndarray(format="bgr24")
-    logging.debug(f"Frame shape: {input_bgr.shape}")  # Debug frame shape
-    logging.debug(f"Frame shape: {input_bgr.shape}")  # Debug frame shape
+    #WebRTC callback that uses MediaPipe Holistic to process frames in real-time.
+    #Returns an annotated frame. Stores each frame's landmarks if an action is confirmed.
 
-    (
-        annotated_image,
-        pose_data,
-        left_hand_data,
-        left_hand_angles_data,
-        right_hand_data,
-        right_hand_angles_data,
-        face_data
-    ) = process_frame(input_bgr)
+    input_bgr = frame.to_ndarray(format="bgr24")
 
     # Collect frames for the currently confirmed action
+
+"""
+old block
     if st.session_state.get('action_confirmed') and st.session_state.get('current_action'):
         action_word = st.session_state['current_action']
         frames_collector = st.session_state['actions'].get(action_word, [])
@@ -329,6 +316,38 @@ def video_frame_callback(frame: av.VideoFrame) -> av.VideoFrame:
 
 
     return av.VideoFrame.from_ndarray(annotated_image, format="bgr24")
+"""
+#new test block
+def video_frame_callback(frame: av.VideoFrame) -> av.VideoFrame:
+    input_bgr = frame.to_ndarray(format="bgr24")
+    frame_data = {
+        "pose_data": None,
+        "left_hand_data": None,
+        "left_hand_angles_data": None,
+        "right_hand_data": None,
+        "right_hand_angles_data": None,
+        "face_data": None,
+    }
+
+    # Process frame using MediaPipe
+    _, pose_data, left_hand_data, left_hand_angles_data, right_hand_data, right_hand_angles_data, face_data = process_frame(input_bgr)
+
+    # Add processed frame data to the queue
+    frame_data.update({
+        "pose_data": pose_data,
+        "left_hand_data": left_hand_data,
+        "left_hand_angles_data": left_hand_angles_data,
+        "right_hand_data": right_hand_data,
+        "right_hand_angles_data": right_hand_angles_data,
+        "face_data": face_data,
+    })
+    frame_queue.put(frame_data)
+
+    logging.debug(f"Frame added to queue. Queue size: {frame_queue.qsize()}")  # Debug log
+
+    # Return the annotated frame for display
+    return av.VideoFrame.from_ndarray(input_bgr, format="bgr24")
+
 
 # -----------------------------------
 # CSV Setup
@@ -564,6 +583,19 @@ with left_col:
         process_and_save_rows()
         # 2. Push the updated CSV
         save_csv_to_huggingface()
+
+     # NEW: Button to process frames from the queue
+    if st.button("Process Frames"):
+        while not frame_queue.empty():
+            frame_data = frame_queue.get()
+
+            if st.session_state.get("action_confirmed") and st.session_state.get("current_action"):
+                action_word = st.session_state["current_action"]
+                if action_word not in st.session_state["actions"]:
+                    st.session_state["actions"][action_word] = []
+
+                st.session_state["actions"][action_word].append(frame_data)
+                st.write(f"Added frame for action '{action_word}'. Total frames: {len(st.session_state['actions'][action_word])}")   
 
 # -----------------------------------
 # Right/Main Area: Display Recorded CSV (if any)
