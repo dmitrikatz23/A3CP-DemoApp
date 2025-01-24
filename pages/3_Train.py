@@ -565,11 +565,24 @@ if st.button("Process Frames"):
 
 # Streamlit Button to Save CSV
 if st.button("Save to CSV"):
+    # Automatically process frames before saving
     all_rows = []
 
+    # Process frames from queue
+    while not frame_queue.empty():
+        frame_data = frame_queue.get()
+
+        if st.session_state.get("action_confirmed") and st.session_state.get("current_action"):
+            action_word = st.session_state["current_action"]
+            if action_word not in st.session_state["actions"]:
+                st.session_state["actions"][action_word] = []
+
+            st.session_state["actions"][action_word].append(frame_data)
+
+    # Flatten frames into rows for CSV
     if "actions" in st.session_state:
         for action, frames in st.session_state["actions"].items():
-            if frames:  # Ensure frames exist
+            if frames:
                 st.write(f"Processing action '{action}' with {len(frames)} frames...")  # Debug info
                 for frame_data in frames:
                     row_data = flatten_landmarks(
@@ -585,8 +598,8 @@ if st.button("Save to CSV"):
                     row = [action, st.session_state["sequence_id"]] + row_data
                     all_rows.append(row)
 
+    # Write rows to CSV
     if all_rows:
-        # Write rows to the CSV file
         try:
             with open(csv_file, mode="a", newline="") as f:
                 csv_writer = csv.writer(f)
@@ -597,11 +610,13 @@ if st.button("Save to CSV"):
     else:
         st.warning("No rows to write to CSV.")
 
-    # Optional: Push to Hugging Face repository
-    try:
-        save_csv_to_huggingface()
-    except Exception as e:
-        st.error(f"Error saving to repository: {e}")
+    # Push to Hugging Face repository if rows were saved
+    if all_rows:
+        try:
+            save_csv_to_huggingface()
+        except Exception as e:
+            st.error(f"Error saving to repository: {e}")
+            
 # -----------------------------------
 # Right/Main Area: Display Recorded CSV (if any)
 # -----------------------------------
