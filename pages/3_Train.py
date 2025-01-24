@@ -550,25 +550,58 @@ with left_col:
             async_processing=True,
         )
 
-    # Button to process rows and push CSV to Hugging Face
-    if st.button("Save CSV to Hugging Face"):
-        # 1. Process and save keyframe rows
-        process_and_save_rows()
-        # 2. Push the updated CSV
+# Streamlit Button to Process Frames
+if st.button("Process Frames"):
+    while not frame_queue.empty():
+        frame_data = frame_queue.get()
+
+        if st.session_state.get("action_confirmed") and st.session_state.get("current_action"):
+            action_word = st.session_state["current_action"]
+            if action_word not in st.session_state["actions"]:
+                st.session_state["actions"][action_word] = []
+
+            st.session_state["actions"][action_word].append(frame_data)
+            st.write(f"Added frame for action '{action_word}'. Total frames: {len(st.session_state['actions'][action_word])}")
+
+# Streamlit Button to Save CSV
+if st.button("Save to CSV"):
+    all_rows = []
+
+    if "actions" in st.session_state:
+        for action, frames in st.session_state["actions"].items():
+            if frames:  # Ensure frames exist
+                st.write(f"Processing action '{action}' with {len(frames)} frames...")  # Debug info
+                for frame_data in frames:
+                    row_data = flatten_landmarks(
+                        frame_data["pose_data"],
+                        frame_data["left_hand_data"],
+                        frame_data["left_hand_angles_data"],
+                        frame_data["right_hand_data"],
+                        frame_data["right_hand_angles_data"],
+                        frame_data["face_data"]
+                    )
+                    # Add action and sequence ID
+                    st.session_state["sequence_id"] += 1
+                    row = [action, st.session_state["sequence_id"]] + row_data
+                    all_rows.append(row)
+
+    if all_rows:
+        # Write rows to the CSV file
+        try:
+            with open(csv_file, mode="a", newline="") as f:
+                csv_writer = csv.writer(f)
+                csv_writer.writerows(all_rows)
+            st.success(f"Saved {len(all_rows)} rows to CSV: {csv_file}")
+        except Exception as e:
+            st.error(f"Error writing to CSV: {e}")
+    else:
+        st.warning("No rows to write to CSV.")
+
+    # Optional: Push to Hugging Face repository
+    try:
         save_csv_to_huggingface()
-
-     # NEW: Button to process frames from the queue
-    if st.button("Process Frames"):
-        while not frame_queue.empty():
-            frame_data = frame_queue.get()
-
-            if st.session_state.get("action_confirmed") and st.session_state.get("current_action"):
-                action_word = st.session_state["current_action"]
-                if action_word not in st.session_state["actions"]:
-                    st.session_state["actions"][action_word] = []
-
-                st.session_state["actions"][action_word].append(frame_data)
-                st.write(f"Added frame for action '{action_word}'. Total frames: {len(st.session_state['actions'][action_word])}")
+    except Exception as e:
+        st.error(f"Error saving to repository: {e}")
 # -----------------------------------
 # Right/Main Area: Display Recorded CSV (if any)
 # -----------------------------------
