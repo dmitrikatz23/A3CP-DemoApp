@@ -45,6 +45,7 @@ def validate_frame_data(frame_data):
 
     return True, None
 
+logging.getLogger("twilio").setLevel(logging.WARNING)
 
 # ---------------------------
 # Hugging Face Integration
@@ -301,10 +302,7 @@ logging.basicConfig(level=logging.DEBUG) #for debugging
 
 
 def video_frame_callback(frame: av.VideoFrame) -> av.VideoFrame:
-    """
-    WebRTC video frame callback.
-    Processes each frame with MediaPipe and adds results to the frame_queue.
-    """
+
     input_bgr = frame.to_ndarray(format="bgr24")
 
     # Process frame using MediaPipe
@@ -327,11 +325,14 @@ def video_frame_callback(frame: av.VideoFrame) -> av.VideoFrame:
         "right_hand_angles_data": right_hand_angles_data,
         "face_data": face_data,
     }
+    # NEW: Log a sample of the data
+    logging.debug(f"Enqueuing frame_data sample: "
+                  f"pose[0]={pose_data[0] if pose_data else 'None'}, "
+                  f"left_hand[0]={left_hand_data[0] if left_hand_data else 'None'}")
+
     frame_queue.put(frame_data)
+    logging.debug(f"Frame added to queue. Queue size: {frame_queue.qsize()}")
 
-    logging.debug(f"Frame added to queue. Queue size: {frame_queue.qsize()}")  # Debug log
-
-    # Return the annotated frame for display
     return av.VideoFrame.from_ndarray(annotated_image, format="bgr24")
 
 
@@ -574,46 +575,54 @@ if st.button("Process Frames"):
                 st.session_state["actions"][action_word] = []
 
             st.session_state["actions"][action_word].append(frame_data)
-            st.write(f"Added frame for action '{action_word}'. Total frames: {len(st.session_state['actions'][action_word])}")
+            
+            # NEW LOG
+            logging.debug(f"[Process Frames] Appended frame_data. "
+                          f"Action '{action_word}' now has "
+                          f"{len(st.session_state['actions'][action_word])} frames.")
 
 
 
 # Streamlit Button to Save CSV
 if st.button("Save to CSV"):
-    logging.debug("Save to CSV button clicked. Processing frames.")
+    logging.debug("[Save to CSV] Button clicked. Starting to process frames.")
     all_rows = []
 
     # 1) Limit frames to a smaller batch (up to 50) for debugging
     frame_count = min(50, frame_queue.qsize())
+    logging.debug(f"[Save to CSV] Processing up to {frame_count} frames from the queue.")
+
     for _ in range(frame_count):
         try:
             # 2) Retrieve frame from the queue
             frame_data = frame_queue.get()
-            logging.debug(f"Dequeued frame_data: {frame_data}")
+            logging.debug(f"[Save to CSV] Dequeued frame_data: {frame_data}")
 
             # 3) Validate frame_data
             is_valid, missing_key = validate_frame_data(frame_data)
             if not is_valid:
-                logging.warning(f"Invalid frame_data: Missing or empty key: {missing_key}")
+                logging.warning(f"[Save to CSV] Invalid frame_data. Missing or empty key: {missing_key}")
                 continue  # Skip this invalid frame
 
             # 4) Log key details
-            for key in frame_data.keys():
-                logging.debug(f"{key}: Type={type(frame_data[key])}, Sample={str(frame_data[key])[:100]}")
+            for key, value in frame_data.items():
+                logging.debug(f"[Save to CSV] Key '{key}': Type={type(value)}, "
+                              f"Sample={str(value)[:100]}")
 
         except Exception as e:
-            logging.error(f"Error processing frame_data: {e}")
+            logging.error(f"[Save to CSV] Error processing frame_data: {e}")
             continue
 
-        # 5) If valid, store the frame data in session state
+        # 5) Append frame_data to session state for the current action
         if st.session_state.get("action_confirmed") and st.session_state.get("current_action"):
             action_word = st.session_state["current_action"]
             if action_word not in st.session_state["actions"]:
                 st.session_state["actions"][action_word] = []
             st.session_state["actions"][action_word].append(frame_data)
-            logging.debug(f"Added frame to action '{action_word}'. Queue size after processing: {frame_queue.qsize()}")
 
-    logging.debug("Finished processing frames.")
+            # NEW LOGGING: Confirm frame append success
+            logging.debug(f"[Save to CSV] Frame appended. Action '{action_word}' now has "
+                          f"{len(st.session_state['actions'][action_word])} frames.")
 
     # 6) Flatten frames into rows for CSV
     if "actions" in st.session_state:
