@@ -565,21 +565,26 @@ if st.button("Process Frames"):
 
 # Streamlit Button to Save CSV
 if st.button("Save to CSV"):
+    logging.debug("Save to CSV button clicked. Processing frames.") # debug
     # Automatically process frames before saving
     all_rows = []
 
     # Process frames from queue
     while not frame_queue.empty():
+        logging.debug(f"Queue size before processing: {frame_queue.qsize()}") #debug
         frame_data = frame_queue.get()
-        logging.debug("Frame processed from queue.")
+        logging.debug(f"Frame processed from queue: {frame_data}")#debug
 
 
         if st.session_state.get("action_confirmed") and st.session_state.get("current_action"):
             action_word = st.session_state["current_action"]
             if action_word not in st.session_state["actions"]:
                 st.session_state["actions"][action_word] = []
+            logging.debug(f"Queue size after processing: {frame_queue.qsize()}") #debug
 
-            st.session_state["actions"][action_word].append(frame_data)
+        st.session_state["actions"][action_word].append(frame_data)
+    logging.debug("Finished processing frames. Preparing to save.") #debug
+
 
     # Flatten frames into rows for CSV
     if "actions" in st.session_state:
