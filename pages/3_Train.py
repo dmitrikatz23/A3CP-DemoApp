@@ -571,6 +571,8 @@ if st.button("Save to CSV"):
     # Process frames from queue
     while not frame_queue.empty():
         frame_data = frame_queue.get()
+        logging.debug("Frame processed from queue.")
+
 
         if st.session_state.get("action_confirmed") and st.session_state.get("current_action"):
             action_word = st.session_state["current_action"]
@@ -616,7 +618,7 @@ if st.button("Save to CSV"):
             save_csv_to_huggingface()
         except Exception as e:
             st.error(f"Error saving to repository: {e}")
-            
+
 # -----------------------------------
 # Right/Main Area: Display Recorded CSV (if any)
 # -----------------------------------
