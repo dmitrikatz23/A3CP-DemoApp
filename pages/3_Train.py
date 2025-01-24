@@ -25,6 +25,42 @@ from sample_utils.turn import get_ice_servers
 # Define a global queue for frame data
 frame_queue = Queue()
 
+#debug helper function
+def validate_frame_data(frame_data):
+    """
+    Validate the frame_data dictionary to ensure it has all required keys
+    and their values are not None or empty.
+    
+    Args:
+        frame_data (dict): The frame data to validate.
+    
+    Returns:
+        tuple: (is_valid (bool), missing_key (str or None)).
+    """
+    # Check if frame_data is a dictionary
+    if not isinstance(frame_data, dict):
+        return False, "frame_data is not a dictionary"
+    
+    # Required keys for frame_data
+    required_keys = [
+        "pose_data", 
+        "left_hand_data", 
+        "left_hand_angles_data", 
+        "right_hand_data", 
+        "right_hand_angles_data", 
+        "face_data"
+    ]
+    
+    # Validate each required key
+    for key in required_keys:
+        if key not in frame_data:
+            return False, key  # Key is missing
+        if frame_data[key] in [None, [], {}, ""]:  # Value is empty
+            return False, key  # Key's value is empty
+
+    return True, None  # Validation passed
+
+
 # ---------------------------
 # Hugging Face Integration
 # ---------------------------
@@ -574,16 +610,19 @@ if st.button("Save to CSV"):
     while not frame_queue.empty():
         try:
             frame_data = frame_queue.get()
-            logging.debug(f"Processing frame_data: {type(frame_data)}, content: {frame_data}")
-            
-            # Check for expected keys
-            required_keys = [
-                "pose_data", "left_hand_data", "left_hand_angles_data",
-                "right_hand_data", "right_hand_angles_data", "face_data"
-            ]
-            for key in required_keys:
+            logging.debug(f"Processing frame_data: Type={type(frame_data)}, Content={frame_data}")
+
+            # Validate frame_data
+            is_valid, missing_key = validate_frame_data(frame_data)
+            if not is_valid:
+                logging.warning(f"Invalid frame_data: Missing or empty key: {missing_key}")
+                continue  # Skip processing this invalid frame
+
+            # Log specific keys in frame_data if available
+            for key in ["pose_data", "left_hand_data", "left_hand_angles_data", 
+                        "right_hand_data", "right_hand_angles_data", "face_data"]:
                 if key in frame_data:
-                    logging.debug(f"{key}: {type(frame_data[key])}, sample content: {str(frame_data[key])[:200]}")
+                    logging.debug(f"{key}: Type={type(frame_data[key])}, Content Sample={str(frame_data[key])[:100]}")
                 else:
                     logging.warning(f"Missing key in frame_data: {key}")
         except Exception as e:
