@@ -572,21 +572,23 @@ if st.button("Save to CSV"):
     all_rows = []
 
     while not frame_queue.empty():
-        frame_data = frame_queue.get()
-        
-        # Log the structure and type of the frame data
-        logging.debug(f"Processing frame_data: {type(frame_data)}, content: {frame_data}")
-        
-        # Check for required keys and their values
-        required_keys = [
-            "pose_data", "left_hand_data", "left_hand_angles_data",
-            "right_hand_data", "right_hand_angles_data", "face_data"
-        ]
-        for key in required_keys:
-            if key in frame_data:
-                logging.debug(f"{key}: {type(frame_data[key])}, sample content: {str(frame_data[key])[:200]}")  # Log type and a snippet of content
-            else:
-                logging.warning(f"Missing key in frame_data: {key}")
+        try:
+            frame_data = frame_queue.get()
+            logging.debug(f"Processing frame_data: {type(frame_data)}, content: {frame_data}")
+            
+            # Check for expected keys
+            required_keys = [
+                "pose_data", "left_hand_data", "left_hand_angles_data",
+                "right_hand_data", "right_hand_angles_data", "face_data"
+            ]
+            for key in required_keys:
+                if key in frame_data:
+                    logging.debug(f"{key}: {type(frame_data[key])}, sample content: {str(frame_data[key])[:200]}")
+                else:
+                    logging.warning(f"Missing key in frame_data: {key}")
+        except Exception as e:
+            logging.error(f"Error processing frame_data: {e}")
+
 
         # Process frame_data for CSV if all keys are present
         if st.session_state.get("action_confirmed") and st.session_state.get("current_action"):
