@@ -15,6 +15,7 @@ import pandas as pd
 import os
 from datetime import datetime
 
+
 import sys
 sys.path.append(str(Path(__file__).resolve().parent.parent))
 
@@ -377,7 +378,12 @@ if hf_token:
     git_email = "no-reply@huggingface.co"
 
     try:
-        repo = Repository(local_dir=local_repo_path, clone_from=repo_name, use_auth_token=hf_token, repo_type="dataset")
+        repo = Repository(
+            local_dir=local_repo_path,
+            clone_from=repo_name,
+            use_auth_token=hf_token,
+            repo_type="dataset"
+        )
         repo.git_config_username_and_email(git_user, git_email)
     except Exception as e:
         st.error(f"Error setting up Hugging Face repository: {e}")
@@ -404,12 +410,14 @@ def save_csv_to_huggingface():
         df.to_csv(csv_repo_path, index=False)
 
         # Commit and push
-        repo.git_add(os.path.basename(csv_file))
-        repo.git_commit("Update actions CSV")
+        repo.git_add(csv_file)
+        repo.git_commit("Update A3CP actions CSV")
         repo.git_push()
-        st.success(f"CSV successfully pushed to Hugging Face: {repo_name}")
+        st.success(f"CSV successfully pushed to Hugging Face repository: {repo_name}")
+        logging.info(f"[Hugging Face] Successfully pushed CSV to repository '{repo_name}'.")
     except Exception as ex:
         st.error(f"Error saving to repository: {ex}")
+        logging.error(f"[Hugging Face] Error during push: {ex}")
 
 # -----------------------------------
 # NEW: Process Keyframes Function
@@ -665,17 +673,17 @@ if st.button("Save to CSV"):
 
     # 8) Push to Hugging Face repository if rows were saved
     if all_rows:
-    # Double-check CSV contents
         try:
             df = pd.read_csv(csv_file)
             if df.empty:
-                logging.warning("CSV is still empty after writing. Skipping Hugging Face push.")
+                logging.warning("[Hugging Face] Local CSV is empty after writing; skipping push.")
             else:
-                logging.debug(f"Local CSV now has {len(df.index)} rows. Attempting push to HF.")
+                logging.debug(f"[Hugging Face] Local CSV now has {len(df.index)} rows. Attempting push to HF.")
                 save_csv_to_huggingface()
         except Exception as e:
-            st.error(f"Error saving to repository: {e}")
-            logging.error(f"Hugging Face push error: {e}")
+            st.error(f"Error reading CSV for repository push: {e}")
+            logging.error(f"[Hugging Face] Push error: {e}")
+
 
 # -----------------------------------
 # Right/Main Area: Display Recorded CSV (if any)
