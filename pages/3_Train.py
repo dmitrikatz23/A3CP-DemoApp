@@ -566,39 +566,35 @@ if st.button("Process Frames"):
 # Streamlit Button to Save CSV
 
 if st.button("Save to CSV"):
-    logging.debug("Save to CSV button clicked. Processing frames.")  # debug
+    logging.debug("Save to CSV button clicked. Processing frames.")
     all_rows = []
 
-    # Process frames from queue
     while not frame_queue.empty():
-        logging.debug(f"Queue size before processing: {frame_queue.qsize()}")  # debug
+        logging.debug(f"Queue size before processing: {frame_queue.qsize()}")
         frame_data = frame_queue.get()
-        logging.debug(f"Frame processed from queue: {frame_data}")  # debug
+        
+        # Log entire frame_data for inspection
+        logging.debug(f"Dequeued frame_data: {frame_data}")
 
-        # Check if frame_data contains the expected keys
+        # Validate keys in frame_data
         required_keys = [
-            "pose_data",
-            "left_hand_data",
-            "left_hand_angles_data",
-            "right_hand_data",
-            "right_hand_angles_data",
-            "face_data",
+            "pose_data", "left_hand_data", "left_hand_angles_data",
+            "right_hand_data", "right_hand_angles_data", "face_data"
         ]
         for key in required_keys:
-            if key not in frame_data:
-                logging.error(f"Missing key in frame_data: {key}")  # Debug missing keys
-                break
-        else:
-            logging.debug("All required keys are present in frame_data.")  # debug
+            if key in frame_data:
+                logging.debug(f"Key {key} exists in frame_data. Value: {frame_data[key]}")
+            else:
+                logging.error(f"Key {key} is missing in frame_data.")
 
         if st.session_state.get("action_confirmed") and st.session_state.get("current_action"):
             action_word = st.session_state["current_action"]
             if action_word not in st.session_state["actions"]:
                 st.session_state["actions"][action_word] = []
             st.session_state["actions"][action_word].append(frame_data)
-            logging.debug(f"Added frame to action '{action_word}'. Queue size after processing: {frame_queue.qsize()}")  # debug
+            logging.debug(f"Added frame to action '{action_word}'. Queue size after processing: {frame_queue.qsize()}")
 
-    logging.debug("Finished processing frames. Preparing to save.")  # debug
+    logging.debug("Finished processing frames.")
 
     # Flatten frames into rows for CSV
     if "actions" in st.session_state:
