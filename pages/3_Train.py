@@ -27,38 +27,23 @@ frame_queue = Queue()
 
 #debug helper function
 def validate_frame_data(frame_data):
-    """
-    Validate the frame_data dictionary to ensure it has all required keys
-    and their values are not None or empty.
-    
-    Args:
-        frame_data (dict): The frame data to validate.
-    
-    Returns:
-        tuple: (is_valid (bool), missing_key (str or None)).
-    """
-    # Check if frame_data is a dictionary
-    if not isinstance(frame_data, dict):
-        return False, "frame_data is not a dictionary"
-    
-    # Required keys for frame_data
+
     required_keys = [
-        "pose_data", 
-        "left_hand_data", 
-        "left_hand_angles_data", 
-        "right_hand_data", 
-        "right_hand_angles_data", 
+        "pose_data",
+        "left_hand_data",
+        "left_hand_angles_data",
+        "right_hand_data",
+        "right_hand_angles_data",
         "face_data"
     ]
-    
-    # Validate each required key
-    for key in required_keys:
-        if key not in frame_data:
-            return False, key  # Key is missing
-        if frame_data[key] in [None, [], {}, ""]:  # Value is empty
-            return False, key  # Key's value is empty
+    if not isinstance(frame_data, dict):
+        return False, "frame_data is not a dictionary"
 
-    return True, None  # Validation passed
+    for key in required_keys:
+        if key not in frame_data or not frame_data[key]:
+            return False, key  # Missing or empty key
+
+    return True, None
 
 
 # ---------------------------
@@ -607,24 +592,21 @@ if st.button("Save to CSV"):
     logging.debug("Save to CSV button clicked. Processing frames.")
     all_rows = []
 
-    while not frame_queue.empty():
+    for _ in range(min(50, frame_queue.qsize())):
         try:
             frame_data = frame_queue.get()
-            logging.debug(f"Processing frame_data: Type={type(frame_data)}, Content={frame_data}")
+            logging.debug(f"Processing frame_data: {frame_data}")
 
             # Validate frame_data
             is_valid, missing_key = validate_frame_data(frame_data)
             if not is_valid:
                 logging.warning(f"Invalid frame_data: Missing or empty key: {missing_key}")
-                continue  # Skip processing this invalid frame
+                continue  # Skip invalid frame
 
-            # Log specific keys in frame_data if available
-            for key in ["pose_data", "left_hand_data", "left_hand_angles_data", 
-                        "right_hand_data", "right_hand_angles_data", "face_data"]:
-                if key in frame_data:
-                    logging.debug(f"{key}: Type={type(frame_data[key])}, Content Sample={str(frame_data[key])[:100]}")
-                else:
-                    logging.warning(f"Missing key in frame_data: {key}")
+            # Log keys and their contents
+            for key in frame_data.keys():
+                logging.debug(f"{key}: Type={type(frame_data[key])}, Sample={str(frame_data[key])[:100]}")
+
         except Exception as e:
             logging.error(f"Error processing frame_data: {e}")
 
