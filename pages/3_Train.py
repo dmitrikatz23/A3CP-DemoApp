@@ -565,6 +565,8 @@ if st.button("Process Frames"):
 
 # Streamlit Button to Save CSV
 
+import json
+
 if st.button("Save to CSV"):
     logging.debug("Save to CSV button clicked. Processing frames.")
     all_rows = []
@@ -573,8 +575,11 @@ if st.button("Save to CSV"):
         logging.debug(f"Queue size before processing: {frame_queue.qsize()}")
         frame_data = frame_queue.get()
 
-        # Log frame data details
-        logging.debug(f"Dequeued frame_data: {frame_data}")
+        # Log frame_data as a JSON-like string
+        try:
+            logging.debug(f"Dequeued frame_data: {json.dumps(frame_data, indent=2)}")
+        except TypeError as e:
+            logging.error(f"Error serializing frame_data to JSON: {e}. Raw frame_data: {frame_data}")
 
         # Check for required keys
         required_keys = [
@@ -587,12 +592,14 @@ if st.button("Save to CSV"):
         else:
             logging.debug("All required keys are present in frame_data.")
 
-        # Log the actual content of each key
+        # Log the content of each key if available
         for key in required_keys:
             if key in frame_data:
                 logging.debug(f"{key}: {frame_data[key]}")
+            else:
+                logging.warning(f"{key} is missing in frame_data.")
 
-        # Proceed with processing
+        # Process frame_data for CSV if all keys are present
         if st.session_state.get("action_confirmed") and st.session_state.get("current_action"):
             action_word = st.session_state["current_action"]
             if action_word not in st.session_state["actions"]:
@@ -601,6 +608,7 @@ if st.button("Save to CSV"):
             logging.debug(f"Added frame to action '{action_word}'. Queue size after processing: {frame_queue.qsize()}")
 
     logging.debug("Finished processing frames.")
+
     
     # Flatten frames into rows for CSV
     if "actions" in st.session_state:
