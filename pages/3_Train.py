@@ -564,33 +564,47 @@ if st.button("Process Frames"):
             st.write(f"Added frame for action '{action_word}'. Total frames: {len(st.session_state['actions'][action_word])}")
 
 # Streamlit Button to Save CSV
+
 if st.button("Save to CSV"):
-    logging.debug("Save to CSV button clicked. Processing frames.") # debug
-    # Automatically process frames before saving
+    logging.debug("Save to CSV button clicked. Processing frames.")  # debug
     all_rows = []
 
     # Process frames from queue
     while not frame_queue.empty():
-        logging.debug(f"Queue size before processing: {frame_queue.qsize()}") #debug
+        logging.debug(f"Queue size before processing: {frame_queue.qsize()}")  # debug
         frame_data = frame_queue.get()
-        logging.debug(f"Frame processed from queue: {frame_data}")#debug
+        logging.debug(f"Frame processed from queue: {frame_data}")  # debug
 
+        # Check if frame_data contains the expected keys
+        required_keys = [
+            "pose_data",
+            "left_hand_data",
+            "left_hand_angles_data",
+            "right_hand_data",
+            "right_hand_angles_data",
+            "face_data",
+        ]
+        for key in required_keys:
+            if key not in frame_data:
+                logging.error(f"Missing key in frame_data: {key}")  # Debug missing keys
+                break
+        else:
+            logging.debug("All required keys are present in frame_data.")  # debug
 
         if st.session_state.get("action_confirmed") and st.session_state.get("current_action"):
             action_word = st.session_state["current_action"]
             if action_word not in st.session_state["actions"]:
                 st.session_state["actions"][action_word] = []
-            logging.debug(f"Queue size after processing: {frame_queue.qsize()}") #debug
+            st.session_state["actions"][action_word].append(frame_data)
+            logging.debug(f"Added frame to action '{action_word}'. Queue size after processing: {frame_queue.qsize()}")  # debug
 
-        st.session_state["actions"][action_word].append(frame_data)
-    logging.debug("Finished processing frames. Preparing to save.") #debug
-
+    logging.debug("Finished processing frames. Preparing to save.")  # debug
 
     # Flatten frames into rows for CSV
     if "actions" in st.session_state:
         for action, frames in st.session_state["actions"].items():
             if frames:
-                st.write(f"Processing action '{action}' with {len(frames)} frames...")  # Debug info
+                logging.debug(f"Processing action '{action}' with {len(frames)} frames.")  # Debug info
                 for frame_data in frames:
                     row_data = flatten_landmarks(
                         frame_data["pose_data"],
@@ -623,6 +637,7 @@ if st.button("Save to CSV"):
             save_csv_to_huggingface()
         except Exception as e:
             st.error(f"Error saving to repository: {e}")
+
 
 # -----------------------------------
 # Right/Main Area: Display Recorded CSV (if any)
