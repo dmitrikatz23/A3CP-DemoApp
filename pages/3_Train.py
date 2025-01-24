@@ -21,6 +21,10 @@ sys.path.append(str(Path(__file__).resolve().parent.parent))
 from sample_utils.download import download_file
 from sample_utils.turn import get_ice_servers
 
+
+# Define a global queue for frame data
+frame_queue = Queue()
+
 # ---------------------------
 # Hugging Face Integration
 # ---------------------------
@@ -283,36 +287,39 @@ def video_frame_callback(frame: av.VideoFrame) -> av.VideoFrame:
 
     # Collect frames for the currently confirmed action
 
-#new test block
 def video_frame_callback(frame: av.VideoFrame) -> av.VideoFrame:
+    """
+    WebRTC video frame callback.
+    Processes each frame with MediaPipe and adds results to the frame_queue.
+    """
     input_bgr = frame.to_ndarray(format="bgr24")
-    frame_data = {
-        "pose_data": None,
-        "left_hand_data": None,
-        "left_hand_angles_data": None,
-        "right_hand_data": None,
-        "right_hand_angles_data": None,
-        "face_data": None,
-    }
 
     # Process frame using MediaPipe
-    _, pose_data, left_hand_data, left_hand_angles_data, right_hand_data, right_hand_angles_data, face_data = process_frame(input_bgr)
+    (
+        annotated_image,
+        pose_data,
+        left_hand_data,
+        left_hand_angles_data,
+        right_hand_data,
+        right_hand_angles_data,
+        face_data
+    ) = process_frame(input_bgr)
 
     # Add processed frame data to the queue
-    frame_data.update({
+    frame_data = {
         "pose_data": pose_data,
         "left_hand_data": left_hand_data,
         "left_hand_angles_data": left_hand_angles_data,
         "right_hand_data": right_hand_data,
         "right_hand_angles_data": right_hand_angles_data,
         "face_data": face_data,
-    })
+    }
     frame_queue.put(frame_data)
 
     logging.debug(f"Frame added to queue. Queue size: {frame_queue.qsize()}")  # Debug log
 
     # Return the annotated frame for display
-    return av.VideoFrame.from_ndarray(input_bgr, format="bgr24")
+    return av.VideoFrame.from_ndarray(annotated_image, format="bgr24")
 
 
 # -----------------------------------
@@ -561,8 +568,7 @@ with left_col:
                     st.session_state["actions"][action_word] = []
 
                 st.session_state["actions"][action_word].append(frame_data)
-                st.write(f"Added frame for action '{action_word}'. Total frames: {len(st.session_state['actions'][action_word])}")   
-
+                st.write(f"Added frame for action '{action_word}'. Total frames: {len(st.session_state['actions'][action_word])}")
 # -----------------------------------
 # Right/Main Area: Display Recorded CSV (if any)
 # -----------------------------------
