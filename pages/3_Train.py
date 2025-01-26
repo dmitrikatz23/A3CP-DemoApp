@@ -1,3 +1,7 @@
+#this is a temporary work space for a better recording app
+
+
+
 import logging
 from queue import Queue
 from pathlib import Path
