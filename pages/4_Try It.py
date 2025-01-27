@@ -552,8 +552,7 @@ st.subheader("CSV File Path")
 st.write(f"CSV file: {csv_file}")
 
 # Display Hugging Face repository status
-st.subheader("Hugging Face Repository Status")
-if repo and repo_name:  # Check if repo and repo_name are defined
+if repo is not None and repo_name is not None:  # Explicitly check if repo and repo_name are defined
     st.write(f"Repository: {repo_name}")
     st.write(f"Local path: {repo.local_dir}")
 else:
