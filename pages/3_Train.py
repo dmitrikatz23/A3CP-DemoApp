@@ -598,6 +598,7 @@ if st.button("Process Frames"):
 # Streamlit Button to Save CSV
 if st.button("Save to CSV"):
     logging.debug("[Save to CSV] Button clicked. Starting to process frames.")
+    
     all_rows = []
 
     # 1) Limit frames to a smaller batch (up to 50) for debugging
