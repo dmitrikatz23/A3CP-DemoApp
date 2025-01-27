@@ -470,72 +470,17 @@ if os.path.exists(csv_file):
 else:
     st.info("No CSV file found yet.")
 
-# -----------------------------------
-# Hugging Face Integration
-# -----------------------------------
-def save_csv_to_huggingface():
-    """
-    Pushes the local CSV to Hugging Face if repo is configured.
-    """
-    if not repo:
-        st.info("No Hugging Face repository configured; skipping push.")
-        return
 
-    if not os.path.exists(csv_file):
-        st.warning("No CSV file found to save.")
-        return
 
-    try:
-        # Copy CSV into local repo folder
-        df = pd.read_csv(csv_file)
-        os.makedirs(repo.local_dir, exist_ok=True)
-        csv_repo_path = os.path.join(repo.local_dir, os.path.basename(csv_file))
-        df.to_csv(csv_repo_path, index=False)
-
-        # Commit and push
-        repo.git_add(csv_file)
-        repo.git_commit("Update A3CP actions CSV")
-        repo.git_push()
-        st.success(f"CSV successfully pushed to Hugging Face repository: {repo_name}")
-        logging.info(f"[Hugging Face] Successfully pushed CSV to repository '{repo_name}'.")
-    except Exception as ex:
-        st.error(f"Error saving to repository: {ex}")
-        logging.error(f"[Hugging Face] Error during push: {ex}")
-
-# Streamlit Button to Push CSV to Hugging Face
-if st.button("Push CSV to Hugging Face"):
-    save_csv_to_huggingface()
-
-# -----------------------------------
-# Debugging Section
-# -----------------------------------
-st.header("Debugging Information")
-
-# Display session state
-st.subheader("Session State")
-st.write(st.session_state)
-
-# Display queue size
-st.subheader("Frame Queue Size")
-st.write(f"Current queue size: {frame_queue.qsize()}")
-
-# Display CSV file path
-st.subheader("CSV File Path")
-st.write(f"CSV file: {csv_file}")
-
-# Display Hugging Face repository status
-st.subheader("Hugging Face Repository Status")
-if repo:
-    st.write(f"Repository: {repo_name}")
-    st.write(f"Local path: {repo.local_dir}")
-else:
-    st.write("No Hugging Face repository configured.")
     # -----------------------------------
+
 # Hugging Face Integration
 # -----------------------------------
 hf_token = os.getenv("HUGGINGFACE_TOKEN")  # Ensure this is set in your environment or Streamlit secrets
 
 repo = None
+repo_name = None  # Initialize repo_name as None
+
 if hf_token:
     repo_name = "dk23/A3CP_actions"  # Replace with your Hugging Face dataset repository
     local_repo_path = "local_repo"
@@ -608,27 +553,8 @@ st.write(f"CSV file: {csv_file}")
 
 # Display Hugging Face repository status
 st.subheader("Hugging Face Repository Status")
-if repo:
+if repo and repo_name:  # Check if repo and repo_name are defined
     st.write(f"Repository: {repo_name}")
     st.write(f"Local path: {repo.local_dir}")
 else:
     st.write("No Hugging Face repository configured.")
-
-# -----------------------------------
-# Final UI Elements
-# -----------------------------------
-st.header("Instructions")
-st.markdown("""
-1. **Enter an action word** (e.g., "I'm hungry") in the text input box.
-2. Click **Confirm Action** to start recording.
-3. Perform the action in front of your webcam.
-4. Click **Save to CSV** to save the recorded frames to a CSV file.
-5. Optionally, click **Push CSV to Hugging Face** to upload the CSV to your Hugging Face dataset repository.
-""")
-
-st.header("Troubleshooting")
-st.markdown("""
-- If the CSV is not saving, check the **Debugging Information** section for errors.
-- Ensure your Hugging Face token is set in the environment variables or Streamlit secrets.
-- If the queue size is not increasing, ensure the webcam is working and the action is confirmed.
-""")
