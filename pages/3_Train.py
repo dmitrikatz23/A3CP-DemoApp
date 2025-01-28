@@ -29,8 +29,11 @@ from sample_utils.turn import get_ice_servers
 # Configure logging
 logging.basicConfig(level=logging.DEBUG, format='%(asctime)s - %(levelname)s - %(message)s')
 
-# Initialize the queue
-frame_queue = Queue()
+#initialize and globalize frame_queue
+def initialize_queue():
+    global frame_queue
+    frame_queue = Queue()
+initialize_queue()
 
 
 #--------test starts
