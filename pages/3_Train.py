@@ -62,33 +62,7 @@ initialize_queue()
 
 #-------end new test
 
-# -----------------------------------
-# CSV Setup
-# -----------------------------------
-csv_folder = "csv"
-if not os.path.exists(csv_folder):
-    os.makedirs(csv_folder)
 
-# If a CSV file hasn't been set in session state, create one with a timestamped name
-if "csv_file" not in st.session_state:
-    session_start_str = datetime.now().strftime("%Y-%m-%d_%H-%M-%S")
-    st.session_state["csv_file"] = os.path.join(csv_folder, f"all_actions_recorded_{session_start_str}.csv")
-
-csv_file = st.session_state["csv_file"]
-
-@st.cache_data
-def initialize_csv(file_name, header):
-    """
-    Initialize the CSV file with the header row if it doesn't exist.
-    """
-    if not os.path.exists(file_name):
-        with open(file_name, mode='w', newline='') as f:
-            csv_writer = csv.writer(f)
-            csv_writer.writerow(header)
-    return True
-
-if "csv_initialized" not in st.session_state:
-    st.session_state["csv_initialized"] = initialize_csv(csv_file, header)
 
 
 #debug helper function
@@ -176,6 +150,36 @@ def load_csv_header():
     )
 
 header = load_csv_header()
+
+# -----------------------------------
+# CSV Setup
+# -----------------------------------
+csv_folder = "csv"
+if not os.path.exists(csv_folder):
+    os.makedirs(csv_folder)
+
+# If a CSV file hasn't been set in session state, create one with a timestamped name
+if "csv_file" not in st.session_state:
+    session_start_str = datetime.now().strftime("%Y-%m-%d_%H-%M-%S")
+    st.session_state["csv_file"] = os.path.join(csv_folder, f"all_actions_recorded_{session_start_str}.csv")
+
+csv_file = st.session_state["csv_file"]
+
+@st.cache_data
+def initialize_csv(file_name, header):
+    """
+    Initialize the CSV file with the header row if it doesn't exist.
+    """
+    if not os.path.exists(file_name):
+        with open(file_name, mode='w', newline='') as f:
+            csv_writer = csv.writer(f)
+            csv_writer.writerow(header)
+    return True
+
+if "csv_initialized" not in st.session_state:
+    st.session_state["csv_initialized"] = initialize_csv(csv_file, header)
+
+
 
 # -----------------------------------
 # MediaPipe Model Loader
