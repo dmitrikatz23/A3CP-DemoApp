@@ -29,6 +29,8 @@ from sample_utils.turn import get_ice_servers
 
 # Define a global queue for frame data
 frame_queue = Queue()
+logging.debug(f"Queue size on intialization: {frame_queue.qsize()}") #debug queue size
+
 
 #debug helper function
 def validate_frame_data(frame_data):
