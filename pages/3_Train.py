@@ -579,8 +579,11 @@ with left_col:
 # Streamlit Button to Process Frames
 if st.button("Process Frames"):
     st.info("process frames started") # debug
+
+    # Correctly log the current queue contents
+    queue_snapshot = list(frame_queue.queue)  # Take a snapshot of the queue contents
+    logging.debug(f"Current queue contents (snapshot): {queue_snapshot}")  # Debugging queue contents
     
-    logging.debug(f"Current queue contents: {frame_queue}") #debugging queue contents
     while not frame_queue.empty():
         frame_data = frame_queue.get()
 
