@@ -26,6 +26,7 @@ sys.path.append(str(Path(__file__).resolve().parent.parent))
 from sample_utils.download import download_file
 from sample_utils.turn import get_ice_servers
 
+logging.basicConfig(level=logging.DEBUG) #for debugging
 
 # Define a global queue for frame data
 frame_queue = Queue()
@@ -305,7 +306,7 @@ def identify_keyframes(
 # -----------------------------------
 # WebRTC Video Callback
 # -----------------------------------
-logging.basicConfig(level=logging.DEBUG) #for debugging
+
 
 
 def video_frame_callback(frame: av.VideoFrame) -> av.VideoFrame:
