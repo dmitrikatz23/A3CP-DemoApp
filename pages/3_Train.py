@@ -11,6 +11,7 @@ import av
 import cv2
 import numpy as np
 import streamlit as st
+from streamlit import session_state  # only if you still need session_state elsewhere
 from streamlit_webrtc import WebRtcMode, webrtc_streamer
 import re
 import csv
@@ -30,14 +31,8 @@ from sample_utils.turn import get_ice_servers
 logging.basicConfig(level=logging.DEBUG, format='%(asctime)s - %(levelname)s - %(message)s')
 
 #initialize and globalize frame_queue
-# def initialize_queue():
-#     global frame_queue
-#     frame_queue = Queue()
-# initialize_queue()
+frame_queue = Queue()
 
-#queue in session state
-if "frame_queue" not in st.session_state:
-    st.session_state["frame_queue"] = Queue()
 
 
 #--------test starts
@@ -374,6 +369,8 @@ def identify_keyframes(
 # -----------------------------------
 #new version
 
+from streamlit import session_state  # only if you still need session_state elsewhere
+
 def video_frame_callback(frame: av.VideoFrame) -> av.VideoFrame:
     input_bgr = frame.to_ndarray(format="bgr24")
 
@@ -399,11 +396,12 @@ def video_frame_callback(frame: av.VideoFrame) -> av.VideoFrame:
         f"left_hand[0]={left_hand_data[0] if left_hand_data else 'None'}"
     )
 
-    # Use session state queue here
-    st.session_state["frame_queue"].put(frame_data)
-    logging.debug(f"Frame added to queue. Queue size: {st.session_state['frame_queue'].qsize()}")
+    # Use the GLOBAL queue
+    frame_queue.put(frame_data)
+    logging.debug(f"Frame added to queue. Queue size: {frame_queue.qsize()}")
 
     return av.VideoFrame.from_ndarray(annotated_image, format="bgr24")
+
 
 
 
@@ -618,12 +616,12 @@ with left_col:
 # Streamlit Button to Process Frames
 if st.button("Process Frames"):
     logging.debug("process frames from st.button process frames")
-    queue_size = st.session_state["frame_queue"].qsize()  # Use session state queue
+    queue_size = frame_queue.qsize()  # <--- Use the GLOBAL queue
     logging.debug(f"Number of rows in frame_queue: {queue_size}")
     st.write(f"Number of rows in frame_queue: {queue_size}")
 
-    while not st.session_state["frame_queue"].empty():    # Use session state queue
-        frame_data = st.session_state["frame_queue"].get()
+    while not frame_queue.empty():  # <--- Use the GLOBAL queue
+        frame_data = frame_queue.get()
 
         if st.session_state.get("action_confirmed") and st.session_state.get("current_action"):
             action_word = st.session_state["current_action"]
@@ -632,7 +630,6 @@ if st.button("Process Frames"):
 
             st.session_state["actions"][action_word].append(frame_data)
             
-            # NEW LOG
             logging.debug(
                 f"[Process Frames] Appended frame_data. "
                 f"Action '{action_word}' now has "
@@ -655,7 +652,7 @@ if st.button("Save to CSV"):
     for _ in range(frame_count):
         try:
             # 2) Retrieve frame from the queue
-            frame_data = st.session_state["frame_queue"].get()  # session state queue
+            frame_data = frame_queue.get()
             logging.debug(f"[Save to CSV] Dequeued frame_data: {frame_data}")
 
             # 3) Validate frame_data
