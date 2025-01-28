@@ -26,11 +26,38 @@ sys.path.append(str(Path(__file__).resolve().parent.parent))
 from sample_utils.download import download_file
 from sample_utils.turn import get_ice_servers
 
-logging.basicConfig(level=logging.DEBUG) #for debugging
+# Configure logging
+logging.basicConfig(level=logging.DEBUG, format='%(asctime)s - %(levelname)s - %(message)s')
 
-# Define a global queue for frame data
+# Initialize the queue
 frame_queue = Queue()
-logging.debug(f"Queue size on intialization: {frame_queue.qsize()}") #debug queue size
+
+
+#--------test starts
+
+# Log the queue size on initialization
+logging.debug(f"Queue size on initialization: {frame_queue.qsize()}")
+
+# Test: Add multiple items (simulating frame data) to the queue
+test_data_1 = {"pose_data": [0, 1, 2], "hand_data": [3, 4, 5], "frame_id": 1}
+test_data_2 = {"pose_data": [6, 7, 8], "hand_data": [9, 10, 11], "frame_id": 2}
+frame_queue.put(test_data_1)
+frame_queue.put(test_data_2)
+logging.debug("Added test items to the queue.")
+
+# Log the queue size after adding items
+logging.debug(f"Queue size after adding items: {frame_queue.qsize()}")
+
+# Test: Print the contents of the queue
+queue_contents = list(frame_queue.queue)  # Convert queue to list to view its contents
+logging.debug(f"Current queue contents: {queue_contents}")
+
+# Optional: Retrieve and process items from the queue
+while not frame_queue.empty():
+    item = frame_queue.get()  # Get the next item from the queue
+    logging.debug(f"Processing item: {item}")
+
+#-------end new test
 
 
 #debug helper function
