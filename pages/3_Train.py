@@ -30,10 +30,14 @@ from sample_utils.turn import get_ice_servers
 logging.basicConfig(level=logging.DEBUG, format='%(asctime)s - %(levelname)s - %(message)s')
 
 #initialize and globalize frame_queue
-def initialize_queue():
-    global frame_queue
-    frame_queue = Queue()
-initialize_queue()
+# def initialize_queue():
+#     global frame_queue
+#     frame_queue = Queue()
+# initialize_queue()
+
+#queue in session state
+if "frame_queue" not in st.session_state:
+    st.session_state["frame_queue"] = Queue()
 
 
 #--------test starts
@@ -368,25 +372,19 @@ def identify_keyframes(
 # -----------------------------------
 # WebRTC Video Callback
 # -----------------------------------
-
-
+#new version
 
 def video_frame_callback(frame: av.VideoFrame) -> av.VideoFrame:
-
     input_bgr = frame.to_ndarray(format="bgr24")
 
-    # Process frame using MediaPipe
-    (
-        annotated_image,
-        pose_data,
-        left_hand_data,
-        left_hand_angles_data,
-        right_hand_data,
-        right_hand_angles_data,
-        face_data
-    ) = process_frame(input_bgr)
+    (annotated_image,
+     pose_data,
+     left_hand_data,
+     left_hand_angles_data,
+     right_hand_data,
+     right_hand_angles_data,
+     face_data) = process_frame(input_bgr)
 
-    # Add processed frame data to the queue
     frame_data = {
         "pose_data": pose_data,
         "left_hand_data": left_hand_data,
@@ -395,13 +393,15 @@ def video_frame_callback(frame: av.VideoFrame) -> av.VideoFrame:
         "right_hand_angles_data": right_hand_angles_data,
         "face_data": face_data,
     }
-    # NEW: Log a sample of the data
-    logging.debug(f"Enqueuing frame_data sample: "
-                  f"pose[0]={pose_data[0] if pose_data else 'None'}, "
-                  f"left_hand[0]={left_hand_data[0] if left_hand_data else 'None'}")
 
-    frame_queue.put(frame_data)
-    logging.debug(f"Frame added to queue. Queue size: {frame_queue.qsize()}")
+    logging.debug(
+        f"Enqueuing frame_data sample: pose[0]={pose_data[0] if pose_data else 'None'}, "
+        f"left_hand[0]={left_hand_data[0] if left_hand_data else 'None'}"
+    )
+
+    # Use session state queue here
+    st.session_state["frame_queue"].put(frame_data)
+    logging.debug(f"Frame added to queue. Queue size: {st.session_state['frame_queue'].qsize()}")
 
     return av.VideoFrame.from_ndarray(annotated_image, format="bgr24")
 
@@ -617,13 +617,13 @@ with left_col:
 
 # Streamlit Button to Process Frames
 if st.button("Process Frames"):
-    logging.debug("process frames from st.button process frames") # debug
-    queue_size = frame_queue.qsize() #debug
-    logging.debug(f"Number of rows in frame_queue: {queue_size}")#debug
-    st.write(f"Number of rows in frame_queue: {queue_size}")  # Optional: Display
+    logging.debug("process frames from st.button process frames")
+    queue_size = st.session_state["frame_queue"].qsize()  # Use session state queue
+    logging.debug(f"Number of rows in frame_queue: {queue_size}")
+    st.write(f"Number of rows in frame_queue: {queue_size}")
 
-    while not frame_queue.empty():
-        frame_data = frame_queue.get()
+    while not st.session_state["frame_queue"].empty():    # Use session state queue
+        frame_data = st.session_state["frame_queue"].get()
 
         if st.session_state.get("action_confirmed") and st.session_state.get("current_action"):
             action_word = st.session_state["current_action"]
@@ -633,9 +633,12 @@ if st.button("Process Frames"):
             st.session_state["actions"][action_word].append(frame_data)
             
             # NEW LOG
-            logging.debug(f"[Process Frames] Appended frame_data. "
-                          f"Action '{action_word}' now has "
-                          f"{len(st.session_state['actions'][action_word])} frames.")
+            logging.debug(
+                f"[Process Frames] Appended frame_data. "
+                f"Action '{action_word}' now has "
+                f"{len(st.session_state['actions'][action_word])} frames."
+            )
+
 
 
 
@@ -652,7 +655,7 @@ if st.button("Save to CSV"):
     for _ in range(frame_count):
         try:
             # 2) Retrieve frame from the queue
-            frame_data = frame_queue.get()
+            frame_data = st.session_state["frame_queue"].get()  # session state queue
             logging.debug(f"[Save to CSV] Dequeued frame_data: {frame_data}")
 
             # 3) Validate frame_data
