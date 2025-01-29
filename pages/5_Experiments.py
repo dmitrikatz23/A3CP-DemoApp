@@ -165,39 +165,55 @@ def hand_angles(hand_landmarks):
 def process_frame(frame):
     """
     Process a single BGR frame with MediaPipe Holistic.
-    Returns:
-        annotated_image: The original frame annotated with landmarks.
-        pose_data: 2D + visibility for each pose landmark.
-        left_hand_data: 2D + visibility for each landmark in the left hand.
-        left_hand_angles_data: The angles computed for the left hand joints.
-        right_hand_data: 2D + visibility for each landmark in the right hand.
-        right_hand_angles_data: The angles computed for the right hand joints.
-        face_data: 2D + visibility for each face landmark.
     """
     image_rgb = cv2.cvtColor(frame, cv2.COLOR_BGR2RGB)
     results = holistic_model.process(image_rgb)
     annotated_image = cv2.cvtColor(image_rgb, cv2.COLOR_RGB2BGR)
 
-    # Draw landmarks if available
-    if results.face_landmarks:
-        mp_drawing.draw_landmarks(annotated_image, results.face_landmarks, mp_holistic.FACEMESH_TESSELATION)
-    if results.left_hand_landmarks:
-        mp_drawing.draw_landmarks(annotated_image, results.left_hand_landmarks, mp_holistic.HAND_CONNECTIONS)
-    if results.right_hand_landmarks:
-        mp_drawing.draw_landmarks(annotated_image, results.right_hand_landmarks, mp_holistic.HAND_CONNECTIONS)
+    # Initialize default values for all landmarks
+    pose_data = [[0.0, 0.0, 0.0] for _ in range(num_pose_landmarks)]
+    left_hand_data = [[0.0, 0.0, 0.0] for _ in range(num_hand_landmarks_per_hand)]
+    right_hand_data = [[0.0, 0.0, 0.0] for _ in range(num_hand_landmarks_per_hand)]
+    face_data = [[0.0, 0.0, 0.0] for _ in range(num_face_landmarks)]
+
+    # Only populate data if landmarks are detected
     if results.pose_landmarks:
-        mp_drawing.draw_landmarks(annotated_image, results.pose_landmarks, mp_holistic.POSE_CONNECTIONS)
+        pose_data = [
+            [lm.x, lm.y, lm.visibility] 
+            for lm in results.pose_landmarks.landmark
+        ]
+        mp_drawing.draw_landmarks(
+            annotated_image, results.pose_landmarks, mp_holistic.POSE_CONNECTIONS
+        )
 
-    # Extract data
-    def extract_data(landmarks, count):
-        return [[lm.x, lm.y, lm.visibility] for lm in landmarks.landmark] if landmarks else [[0, 0, 0]] * count
+    if results.left_hand_landmarks:
+        left_hand_data = [
+            [lm.x, lm.y, lm.visibility] 
+            for lm in results.left_hand_landmarks.landmark
+        ]
+        mp_drawing.draw_landmarks(
+            annotated_image, results.left_hand_landmarks, mp_holistic.HAND_CONNECTIONS
+        )
 
-    pose_data = extract_data(results.pose_landmarks, num_pose_landmarks)
-    left_hand_data = extract_data(results.left_hand_landmarks, num_hand_landmarks_per_hand)
-    right_hand_data = extract_data(results.right_hand_landmarks, num_hand_landmarks_per_hand)
-    face_data = extract_data(results.face_landmarks, num_face_landmarks)
+    if results.right_hand_landmarks:
+        right_hand_data = [
+            [lm.x, lm.y, lm.visibility] 
+            for lm in results.right_hand_landmarks.landmark
+        ]
+        mp_drawing.draw_landmarks(
+            annotated_image, results.right_hand_landmarks, mp_holistic.HAND_CONNECTIONS
+        )
 
-    # Compute joint angles for hands
+    if results.face_landmarks:
+        face_data = [
+            [lm.x, lm.y, lm.visibility] 
+            for lm in results.face_landmarks.landmark
+        ]
+        mp_drawing.draw_landmarks(
+            annotated_image, results.face_landmarks, mp_holistic.FACEMESH_TESSELATION
+        )
+
+    # Compute joint angles
     left_hand_angles_data = hand_angles(left_hand_data)
     right_hand_angles_data = hand_angles(right_hand_data)
 
