@@ -5,8 +5,9 @@ import csv
 import pandas as pd
 from queue import Queue
 
-# Initialize Queue
-data_queue = Queue()
+# Initialize session state queue
+if "data_queue" not in st.session_state:
+    st.session_state.data_queue = Queue()
 
 # Function to initialize CSV folder and file
 def initialize_csv_folder_and_file():
@@ -44,24 +45,24 @@ def initialize_csv_file(file_path, header):
 # Function to add data to the queue
 def add_to_queue(data):
     """
-    Adds data to the queue.
+    Adds data to the session state queue.
     """
-    data_queue.put(data)
+    st.session_state.data_queue.put(data)
     st.write(f"Added to queue: {data}")
-    st.write(f"Queue size: {data_queue.qsize()}")
+    st.write(f"Queue size: {st.session_state.data_queue.qsize()}")
 
 # Function to write data from the queue to the CSV
 def write_queue_to_csv(file_path):
     """
-    Writes all data in the queue to the CSV file.
+    Writes all data in the session state queue to the CSV file.
     """
-    if data_queue.empty():
+    if st.session_state.data_queue.empty():
         st.warning("No data in queue to write.")
         return
 
     rows = []
-    while not data_queue.empty():
-        rows.append(data_queue.get())
+    while not st.session_state.data_queue.empty():
+        rows.append(st.session_state.data_queue.get())
 
     try:
         with open(file_path, mode="a", newline="") as f:
@@ -79,7 +80,7 @@ def display_csv(file_path):
     if file_path.exists():
         try:
             df = pd.read_csv(file_path)
-            if df.empty:
+            if df.empty():
                 st.info("The CSV file is empty.")
             else:
                 st.write("### CSV File Contents")
