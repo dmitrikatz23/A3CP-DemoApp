@@ -80,7 +80,7 @@ def display_csv(file_path):
     if file_path.exists():
         try:
             df = pd.read_csv(file_path)
-            if df.empty():
+            if df.empty:
                 st.info("The CSV file is empty.")
             else:
                 st.write("### CSV File Contents")
