@@ -1,6 +1,4 @@
-#this is a temporary work space for a better recording app
-
-
+#this is a version that does not write data from queue to csv
 
 import logging
 from queue import Queue
@@ -11,7 +9,7 @@ import av
 import cv2
 import numpy as np
 import streamlit as st
-from streamlit import session_state  # only if you still need session_state elsewhere
+from streamlit import session_state  
 from streamlit_webrtc import WebRtcMode, webrtc_streamer
 import re
 import csv
@@ -30,39 +28,9 @@ from sample_utils.turn import get_ice_servers
 # Configure logging
 logging.basicConfig(level=logging.DEBUG, format='%(asctime)s - %(levelname)s - %(message)s')
 
-#initialize and globalize frame_queue
-frame_queue = Queue()
-
-
-
-#--------test starts
-
-# Log the queue size on initialization
-##logging.debug(f"Queue size on initialization: {frame_queue.qsize()}")
-
-# Test: Add multiple items (simulating frame data) to the queue
-#test_data_1 = {"pose_data": [0, 1, 2, 3], "hand_data": [3, 4, 5, 3], "frame_id": 1}
-#test_data_2 = {"pose_data": [6, 7, 8, 3], "hand_data": [9, 10, 11, 3], "frame_id": 2}
-#frame_queue.put(test_data_1)
-#frame_queue.put(test_data_2)
-# logging.debug("Added test items to the queue.")
-
-# Log the queue size after adding items
-# logging.debug(f"Queue size after adding items: {frame_queue.qsize()}")
-
-# Test: Print the contents of the queue
-# queue_contents = list(frame_queue.queue)  # Convert queue to list to view its contents
-# logging.debug(f"Current queue contents: {queue_contents}")
-
-# Optional: Retrieve and process items from the queue
-# while not frame_queue.empty():
-#     item = frame_queue.get()  # Get the next item from the queue
-#     logging.debug(f"Processing item: {item}")
-
-#-------end new test
-
-
-
+# Initialize session state queue
+if "data_queue" not in st.session_state:
+    st.session_state.data_queue = Queue()
 
 #debug helper function
 def validate_frame_data(frame_data):
@@ -367,9 +335,8 @@ def identify_keyframes(
 # -----------------------------------
 # WebRTC Video Callback
 # -----------------------------------
-#new version
 
-from streamlit import session_state  # only if you still need session_state elsewhere
+
 
 def video_frame_callback(frame: av.VideoFrame) -> av.VideoFrame:
     input_bgr = frame.to_ndarray(format="bgr24")
