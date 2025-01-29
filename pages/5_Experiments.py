@@ -15,11 +15,11 @@ import numpy as np
 import streamlit as st
 from streamlit_webrtc import WebRtcMode, webrtc_streamer
 
-# sample_utils imports
+# sample_utils imports (if needed for ICE servers)
 from sample_utils.download import download_file
 from sample_utils.turn import get_ice_servers
 
-# Hugging Face
+# Optional: Hugging Face
 from huggingface_hub import Repository
 
 # ------------------------------------------------
@@ -33,6 +33,7 @@ logger = logging.getLogger(__name__)
 # Streamlit Page Configuration
 # ------------------------------------------------
 st.set_page_config(layout="wide")
+st.title("Holistic Demo with Queuing & CSV Saving")
 
 # ------------------------------------------------
 # 1) Initialize Session State
@@ -43,9 +44,6 @@ if "frame_queue" not in st.session_state:
 
 if "actions" not in st.session_state:
     st.session_state.actions = {}
-
-if "record_started" not in st.session_state:
-    st.session_state.record_started = False
 
 if "sequence_id" not in st.session_state:
     st.session_state.sequence_id = 0
@@ -74,8 +72,6 @@ csv_file = st.session_state.csv_file
 # ------------------------------------------------
 # 3) Generate CSV Header
 # ------------------------------------------------
-import mediapipe as mp
-
 mp_drawing = mp.solutions.drawing_utils
 mp_holistic = mp.solutions.holistic
 
@@ -98,7 +94,6 @@ left_hand_landmarks = [f'left_hand_{axis}{i}' for i in range(1, num_hand_landmar
 right_hand_landmarks = [f'right_hand_{axis}{i}' for i in range(1, num_hand_landmarks_per_hand+1) for axis in ['x', 'y', 'v']]
 face_landmarks = [f'face_{axis}{i}' for i in range(1, num_face_landmarks+1) for axis in ['x', 'y', 'v']]
 
-@st.cache_data
 def load_csv_header():
     return (
         ['class', 'sequence_id']
@@ -112,7 +107,6 @@ def load_csv_header():
 
 header = load_csv_header()
 
-@st.cache_data
 def initialize_csv(file_name, header):
     """
     Initialize the CSV file with the header row if it doesn't exist.
@@ -134,7 +128,7 @@ if "csv_initialized" not in st.session_state:
 # ------------------------------------------------
 @st.cache_resource
 def load_mediapipe_model():
-    return mp.solutions.holistic.Holistic(
+    return mp_holistic.Holistic(
         min_detection_confidence=0.5,
         min_tracking_confidence=0.5,
         static_image_mode=False
@@ -180,7 +174,7 @@ def hand_angles(hand_landmarks):
     """
     Calculate angles for each finger joint using hand landmarks.
     """
-    if (not hand_landmarks) or all((p[0] == 0 and p[1] == 0 and p[2] == 0) for p in hand_landmarks):
+    if not hand_landmarks or all((p[0] == 0 and p[1] == 0 and p[2] == 0) for p in hand_landmarks):
         return [0] * len(angle_names_base)
 
     h = {i: hand_landmarks[i] for i in range(len(hand_landmarks))}
@@ -355,7 +349,7 @@ def save_csv_to_huggingface():
 # ------------------------------------------------
 # 8) Streamlit UI and Logic
 # ------------------------------------------------
-st.title("Record an Action")
+st.subheader("WebRTC Stream")
 
 # Controls Column
 left_col, right_col = st.columns([1, 2])
@@ -367,7 +361,7 @@ with left_col:
     if st.button("Confirm Action") and action_word:
         sanitized_action_word = re.sub(r'[^a-zA-Z0-9_]', '_', action_word.strip())
 
-        # Clear old streamer, if any
+        # Reset or clear old streamer, if any
         if st.session_state.get('active_streamer_key') is not None:
             st.session_state['action_confirmed'] = False
             old_key = st.session_state['active_streamer_key']
@@ -399,12 +393,14 @@ with left_col:
 FRAME_WINDOW = right_col.image([])
 status_bar = right_col.empty()
 
+st.subheader("Process & Save Frames")
+
 # ------------------------------------------------
 # Buttons to Process & Save
 # ------------------------------------------------
 if st.button("Process Frames"):
     """
-    Move frames from session_state.frame_queue into st.session_state.actions
+    Move frames from st.session_state.frame_queue into st.session_state.actions
     for the currently confirmed action.
     """
     qsize = st.session_state.frame_queue.qsize()
@@ -422,11 +418,11 @@ if st.button("Process Frames"):
 
         if st.session_state.get("action_confirmed") and st.session_state.get("current_action"):
             action_word = st.session_state["current_action"]
-            # Add to actions
             st.session_state["actions"][action_word].append(frame_data)
 
-    st.write(f"Processed frames. Total frames for action '{st.session_state['current_action']}': "
-             f"{len(st.session_state['actions'][action_word])}")
+    if st.session_state.get("current_action"):
+        final_count = len(st.session_state["actions"][st.session_state["current_action"]])
+        st.write(f"Processed frames. Total frames for action '{st.session_state['current_action']}': {final_count}")
 
 if st.button("Save to CSV"):
     """
@@ -479,7 +475,7 @@ if st.button("Save to CSV"):
 # ------------------------------------------------
 # Display Recorded CSV
 # ------------------------------------------------
-st.header("Recorded Actions Summary (Current CSV)")
+st.subheader("Recorded Actions Summary (Current CSV)")
 
 if os.path.exists(csv_file):
     df = pd.read_csv(csv_file)
