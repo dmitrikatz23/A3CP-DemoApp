@@ -1,7 +1,7 @@
 import logging
 import queue
-from queue import Queue
 from pathlib import Path
+from typing import List, NamedTuple
 import mediapipe as mp
 import av
 import cv2
@@ -15,36 +15,36 @@ import pandas as pd
 import os
 from datetime import datetime
 import sys
+from queue import Queue
 
-# Adjust path if needed
 sys.path.append(str(Path(__file__).resolve().parent.parent))
-
 from sample_utils.download import download_file
 from sample_utils.turn import get_ice_servers
 
-# ------------------------------------------------------------
-# Page Setup
-# ------------------------------------------------------------
-st.set_page_config(layout="wide")
-
-st.title("Record an Action (with Queue-based CSV Writing)")
-
-# ------------------------------------------------------------
+# -----------------------------------
 # Logging Setup
-# ------------------------------------------------------------
+# -----------------------------------
 logger = logging.getLogger(__name__)
 
-# ------------------------------------------------------------
-# MediaPipe & Landmark Constants
-# ------------------------------------------------------------
+# -----------------------------------
+# Streamlit Page Configuration
+# -----------------------------------
+st.set_page_config(layout="wide")
+
+# -----------------------------------
+# MediaPipe Initialization & Landmark Constants
+# -----------------------------------
 mp_drawing = mp.solutions.drawing_utils
 mp_holistic = mp.solutions.holistic
 
+# Number of landmarks in various MediaPipe models
 num_pose_landmarks = 33
 num_hand_landmarks_per_hand = 21
 num_face_landmarks = 468
 
-# Hand angle names
+# -----------------------------------
+# Angle Names for Hands
+# -----------------------------------
 angle_names_base = [
     'thumb_mcp', 'thumb_ip', 
     'index_mcp', 'index_pip', 'index_dip',
@@ -55,15 +55,17 @@ angle_names_base = [
 left_hand_angle_names = [f'left_{name}' for name in angle_names_base]
 right_hand_angle_names = [f'right_{name}' for name in angle_names_base]
 
-# Pose, Hand, and Face landmark column names
+# -----------------------------------
+# Landmark Header Definitions
+# -----------------------------------
 pose_landmarks = [f'pose_{axis}{i}' for i in range(1, num_pose_landmarks+1) for axis in ['x', 'y', 'v']]
 left_hand_landmarks = [f'left_hand_{axis}{i}' for i in range(1, num_hand_landmarks_per_hand+1) for axis in ['x', 'y', 'v']]
 right_hand_landmarks = [f'right_hand_{axis}{i}' for i in range(1, num_hand_landmarks_per_hand+1) for axis in ['x', 'y', 'v']]
 face_landmarks = [f'face_{axis}{i}' for i in range(1, num_face_landmarks+1) for axis in ['x', 'y', 'v']]
 
-# ------------------------------------------------------------
-# CSV Header
-# ------------------------------------------------------------
+# -----------------------------------
+# CSV Header Loader
+# -----------------------------------
 @st.cache_data
 def load_csv_header():
     """
@@ -81,9 +83,9 @@ def load_csv_header():
 
 header = load_csv_header()
 
-# ------------------------------------------------------------
+# -----------------------------------
 # MediaPipe Model Loader
-# ------------------------------------------------------------
+# -----------------------------------
 @st.cache_resource
 def load_mediapipe_model():
     """
@@ -97,9 +99,9 @@ def load_mediapipe_model():
 
 holistic_model = load_mediapipe_model()
 
-# ------------------------------------------------------------
-# Landmark & Angle Calculations
-# ------------------------------------------------------------
+# -----------------------------------
+# Helper Functions
+# -----------------------------------
 def calculate_angle(a, b, c):
     """
     Calculate the angle formed at point b by (a -> b -> c).
@@ -122,6 +124,7 @@ def hand_angles(hand_landmarks):
     if (not hand_landmarks) or all((p[0] == 0 and p[1] == 0 and p[2] == 0) for p in hand_landmarks):
         return [0] * len(angle_names_base)
 
+    # Convert list of landmarks into a dict for easy indexing
     h = {i: hand_landmarks[i] for i in range(len(hand_landmarks))}
     def pt(i):
         return [h[i][0], h[i][1]]
@@ -130,26 +133,27 @@ def hand_angles(hand_landmarks):
     thumb_mcp = calculate_angle(pt(1), pt(2), pt(3))
     thumb_ip  = calculate_angle(pt(2), pt(3), pt(4))
 
-    # Index
+    # Index finger angles
     index_mcp = calculate_angle(pt(0), pt(5), pt(6))
     index_pip = calculate_angle(pt(5), pt(6), pt(7))
     index_dip = calculate_angle(pt(6), pt(7), pt(8))
 
-    # Middle
+    # Middle finger angles
     middle_mcp = calculate_angle(pt(0), pt(9), pt(10))
     middle_pip = calculate_angle(pt(9), pt(10), pt(11))
     middle_dip = calculate_angle(pt(10), pt(11), pt(12))
 
-    # Ring
+    # Ring finger angles
     ring_mcp = calculate_angle(pt(0), pt(13), pt(14))
     ring_pip = calculate_angle(pt(13), pt(14), pt(15))
     ring_dip = calculate_angle(pt(14), pt(15), pt(16))
 
-    # Little
+    # Little finger angles
     little_mcp = calculate_angle(pt(0), pt(17), pt(18))
     little_pip = calculate_angle(pt(17), pt(18), pt(19))
     little_dip = calculate_angle(pt(18), pt(19), pt(20))
 
+    # Return all angles in a flat list
     return [
         thumb_mcp, thumb_ip,
         index_mcp, index_pip, index_dip,
@@ -161,13 +165,20 @@ def hand_angles(hand_landmarks):
 def process_frame(frame):
     """
     Process a single BGR frame with MediaPipe Holistic.
-    Returns annotated_image and landmark data.
+    Returns:
+        annotated_image: The original frame annotated with landmarks.
+        pose_data: 2D + visibility for each pose landmark.
+        left_hand_data: 2D + visibility for each landmark in the left hand.
+        left_hand_angles_data: The angles computed for the left hand joints.
+        right_hand_data: 2D + visibility for each landmark in the right hand.
+        right_hand_angles_data: The angles computed for the right hand joints.
+        face_data: 2D + visibility for each face landmark.
     """
     image_rgb = cv2.cvtColor(frame, cv2.COLOR_BGR2RGB)
     results = holistic_model.process(image_rgb)
     annotated_image = cv2.cvtColor(image_rgb, cv2.COLOR_RGB2BGR)
 
-    # Draw landmarks
+    # Draw landmarks if available
     if results.face_landmarks:
         mp_drawing.draw_landmarks(annotated_image, results.face_landmarks, mp_holistic.FACEMESH_TESSELATION)
     if results.left_hand_landmarks:
@@ -177,6 +188,7 @@ def process_frame(frame):
     if results.pose_landmarks:
         mp_drawing.draw_landmarks(annotated_image, results.pose_landmarks, mp_holistic.POSE_CONNECTIONS)
 
+    # Extract data
     def extract_data(landmarks, count):
         return [[lm.x, lm.y, lm.visibility] for lm in landmarks.landmark] if landmarks else [[0, 0, 0]] * count
 
@@ -185,6 +197,7 @@ def process_frame(frame):
     right_hand_data = extract_data(results.right_hand_landmarks, num_hand_landmarks_per_hand)
     face_data = extract_data(results.face_landmarks, num_face_landmarks)
 
+    # Compute joint angles for hands
     left_hand_angles_data = hand_angles(left_hand_data)
     right_hand_angles_data = hand_angles(right_hand_data)
 
@@ -207,16 +220,13 @@ def flatten_landmarks(
     face_data
 ):
     """
-    Flatten all landmark data (x,y,v) + angles into a single 1D list.
+    Flatten all landmark data and angles into a single 1D list.
     """
     pose_flat = [val for landmark in pose_data for val in landmark]
     left_hand_flat = [val for landmark in left_hand_data for val in landmark]
     right_hand_flat = [val for landmark in right_hand_data for val in landmark]
-
-    # Angles are already single-level lists
     left_hand_angles_flat = left_hand_angles_data
     right_hand_angles_flat = right_hand_angles_data
-
     face_flat = [val for landmark in face_data for val in landmark]
 
     return (
@@ -228,82 +238,25 @@ def flatten_landmarks(
         face_flat
     )
 
-def calculate_velocity(landmarks):
-    """
-    Calculate frame-to-frame velocity from NxM array of landmarks.
-    """
-    velocities = []
-    for i in range(1, len(landmarks)):
-        velocity = np.linalg.norm(landmarks[i] - landmarks[i-1])
-        velocities.append(velocity)
-    return np.array(velocities)
-
-def calculate_acceleration(velocities):
-    """
-    Calculate frame-to-frame acceleration from velocity array.
-    """
-    accelerations = []
-    for i in range(1, len(velocities)):
-        acceleration = np.abs(velocities[i] - velocities[i-1])
-        accelerations.append(acceleration)
-    return np.array(accelerations)
-
-def identify_keyframes(
-    landmarks,
-    velocity_threshold=0.1,
-    acceleration_threshold=0.1
-):
-    """
-    Identify keyframes based on velocity and acceleration thresholds.
-    """
-    velocities = calculate_velocity(landmarks)
-    accelerations = calculate_acceleration(velocities)
-    keyframes = []
-    for i in range(len(accelerations)):
-        if velocities[i] > velocity_threshold or accelerations[i] > acceleration_threshold:
-            keyframes.append(i + 1)  # +1 offset
-    return keyframes
-
-# ------------------------------------------------------------
-# WebRTC Video Callback
-# ------------------------------------------------------------
-def video_frame_callback(frame: av.VideoFrame) -> av.VideoFrame:
-    """
-    WebRTC callback that uses MediaPipe Holistic to process frames in real-time.
-    Returns an annotated frame.
-    """
-    input_bgr = frame.to_ndarray(format="bgr24")
-    (
-        annotated_image,
-        _pose_data,
-        _left_hand_data,
-        _left_hand_angles,
-        _right_hand_data,
-        _right_hand_angles,
-        _face_data
-    ) = process_frame(input_bgr)
-    return av.VideoFrame.from_ndarray(annotated_image, format="bgr24")
-
-# ------------------------------------------------------------
-# Queue-Based CSV Saving (from your snippet)
-# ------------------------------------------------------------
-
-# 1. Initialize the queue in session state
+# -----------------------------------
+# Queue Initialization
+# -----------------------------------
 if "data_queue" not in st.session_state:
-    st.session_state.data_queue = Queue(maxsize=1000)
+    st.session_state.data_queue = Queue()
 
+# Function to add data to the queue
 def add_to_queue(data):
     """
-    Adds a single row (list) to the session state queue.
+    Adds data to the session state queue.
     """
-    if st.session_state.data_queue.full():
-        st.warning("Queue is full. Data not added.")
-        return
     st.session_state.data_queue.put(data)
+    st.write(f"Added to queue: {data}")
+    st.write(f"Queue size: {st.session_state.data_queue.qsize()}")
 
+# Function to write data from the queue to the CSV
 def write_queue_to_csv(file_path):
     """
-    Writes all data currently in the queue to the CSV file, then clears the queue.
+    Writes all data in the session state queue to the CSV file.
     """
     if st.session_state.data_queue.empty():
         st.warning("No data in queue to write.")
@@ -321,75 +274,44 @@ def write_queue_to_csv(file_path):
     except Exception as e:
         st.error(f"Error writing to CSV: {e}")
 
-def display_csv(file_path):
+# -----------------------------------
+# WebRTC Video Callback
+# -----------------------------------
+def video_frame_callback(frame: av.VideoFrame) -> av.VideoFrame:
     """
-    Displays the contents of the CSV file in a Streamlit dataframe.
-    Also shows a summary of recorded classes.
+    WebRTC callback that uses MediaPipe Holistic to process frames in real-time.
+    Returns an annotated frame.
     """
-    if not os.path.exists(file_path):
-        st.info("The CSV file does not exist yet.")
-        return
-    try:
-        df = pd.read_csv(file_path)
-        if df.empty:
-            st.info("The CSV file is empty.")
-            return
-        st.write("### CSV File Contents")
-        st.dataframe(df)
+    input_bgr = frame.to_ndarray(format="bgr24")
+    (
+        annotated_image,
+        pose_data,
+        left_hand_data,
+        left_hand_angles,
+        right_hand_data,
+        right_hand_angles,
+        face_data
+    ) = process_frame(input_bgr)
 
-        # Display a summary of recorded classes
-        if 'class' in df.columns:
-            unique_actions = df['class'].unique()
-            num_actions = len(unique_actions)
-            st.write(f"**Unique action classes ({num_actions}):**")
-            num_cols = 8
-            num_rows = (num_actions + num_cols - 1) // num_cols
-            for r in range(num_rows):
-                row_actions = unique_actions[r*num_cols:(r+1)*num_cols]
-                cols = st.columns(num_cols)
-                for col, a in zip(cols, row_actions):
-                    if a:
-                        col.markdown(
-                            f"<h4 style='margin:10px; text-align:center; font-family:sans-serif;'>{a}</h4>",
-                            unsafe_allow_html=True
-                        )
-    except Exception as e:
-        st.error(f"Error reading the CSV file: {e}")
+    # Flatten landmarks and add to queue
+    flattened_data = flatten_landmarks(
+        pose_data,
+        left_hand_data,
+        left_hand_angles,
+        right_hand_data,
+        right_hand_angles,
+        face_data
+    )
+    add_to_queue(flattened_data)
 
-# ------------------------------------------------------------
-# CSV Initialization
-# ------------------------------------------------------------
+    return av.VideoFrame.from_ndarray(annotated_image, format="bgr24")
 
-# 1) Create a "csv" folder at the same level as this script (if missing)
-csv_folder = Path(__file__).resolve().parent / "csv"
-if not csv_folder.exists():
-    csv_folder.mkdir(parents=True)
+# -----------------------------------
+# Streamlit UI and Logic
+# -----------------------------------
+st.title("Record an Action")
 
-# 2) Create a session-specific CSV file if not set
-if "csv_file" not in st.session_state:
-    session_start_str = datetime.now().strftime("%Y-%m-%d_%H-%M-%S")
-    st.session_state["csv_file"] = csv_folder / f"my_actions_{session_start_str}.csv"
-
-csv_file = st.session_state["csv_file"]
-
-# 3) Initialize the CSV with a header if the file doesn't exist
-def initialize_csv_file(file_path, csv_header):
-    """
-    Creates a CSV file with the specified header if it doesn't exist.
-    """
-    if not file_path.exists():
-        with open(file_path, mode="w", newline="") as f:
-            csv_writer = csv.writer(f)
-            csv_writer.writerow(csv_header)
-        st.write(f"CSV initialized with header at {file_path}")
-    else:
-        st.write(f"CSV file already exists: {file_path}")
-
-initialize_csv_file(csv_file, header)
-
-# ------------------------------------------------------------
-# Streamlit State for Recording
-# ------------------------------------------------------------
+# Initialize session state variables for handling actions, sequences, etc.
 if 'actions' not in st.session_state:
     st.session_state['actions'] = {}
 if 'record_started' not in st.session_state:
@@ -405,16 +327,43 @@ left_col, right_col = st.columns([1, 2])
 FRAME_WINDOW = right_col.image([])
 status_bar = right_col.empty()
 
-# ------------------------------------------------------------
+# -----------------------------------
+# CSV Setup
+# -----------------------------------
+csv_folder = "csv"
+if not os.path.exists(csv_folder):
+    os.makedirs(csv_folder)
+
+# If a CSV file hasn't been set in session state, create one with a timestamped name
+if "csv_file" not in st.session_state:
+    session_start_str = datetime.now().strftime("%Y-%m-%d_%H-%M-%S")
+    st.session_state["csv_file"] = os.path.join(csv_folder, f"my_actions_{session_start_str}.csv")
+
+csv_file = st.session_state["csv_file"]
+
+@st.cache_data
+def initialize_csv(file_name, header):
+    """
+    Initialize the CSV file with the header row if it doesn't exist.
+    """
+    with open(file_name, mode='w', newline='') as f:
+        csv_writer = csv.writer(f)
+        csv_writer.writerow(header)
+    return True
+
+if "csv_initialized" not in st.session_state:
+    st.session_state["csv_initialized"] = initialize_csv(csv_file, header)
+
+# -----------------------------------
 # Left Column: Controls
-# ------------------------------------------------------------
+# -----------------------------------
 with left_col:
     st.header("Controls")
-    action_word = st.text_input("Enter the intended meaning for the action e.g. 'I'm hungry'")
+    action_word = st.text_input("Enter the intended meaning for the action e.g. I'm hungry")
 
     # Confirm Action button
     if st.button("Confirm Action") and action_word:
-        # Sanitize the action name
+        # Sanitize action word for internal use
         sanitized_action_word = re.sub(r'[^a-zA-Z0-9_]', '_', action_word.strip())
 
         # If an active streamer already exists, clear its state
@@ -430,10 +379,12 @@ with left_col:
         st.session_state['active_streamer_key'] = f"record-actions-{sanitized_action_word}"
         st.success(f"Action '{action_word}' confirmed!")
 
-    # Start WebRTC if action is confirmed
+    # If an action has been confirmed, show the WebRTC streamer
     if st.session_state.get('action_confirmed', False):
         streamer_key = st.session_state['active_streamer_key']
         st.info(f"Streaming activated! Perform the action: {action_word}")
+
+        # Launch Streamlit WebRTC streamer
         webrtc_streamer(
             key=streamer_key,
             mode=WebRtcMode.SENDRECV,
@@ -443,106 +394,18 @@ with left_col:
             async_processing=True,
         )
 
-# ------------------------------------------------------------
-# Right/Main Area: Processing
-# ------------------------------------------------------------
-st.header("Recorded Actions (Keyframe Extraction)")
+# -----------------------------------
+# Right/Main Area: Recorded Actions
+# -----------------------------------
+st.header("Recorded Actions")
 
-"""
-Below we simulate collecting frames for the action in `st.session_state['actions'][action_word]`.
-In a real-world app, you’d store frames or data while the webcam is running.
-For this demo, we assume you already have frames in `st.session_state['actions']` 
-when you click "Process Keyframes".
-"""
+# Write queue to CSV when the button is clicked
+if st.button("Write Queue to CSV"):
+    write_queue_to_csv(csv_file)
 
-# Button to simulate processing frames & extracting keyframes
-if st.button("Process Keyframes for All Actions"):
-    # Hypothetical example storing 2 frames for demonstration
-    # In real usage, you would accumulate frames from the live stream in session_state
-    # and then pass them here.
-    for action in st.session_state['actions'].keys():
-        # For demonstration, let's assume we have some "fake" frames:
-        # The actual frames/landmarks would come from your callback or a memory buffer
-        st.session_state['actions'][action] = [
-            (
-                [[(i/10.0), (i/10.0), 1] for i in range(num_pose_landmarks)],  # pose_data
-                [[(i/10.0), (i/10.0), 1] for i in range(num_hand_landmarks_per_hand)], # left_hand_data
-                [0]*len(angle_names_base),  # left_hand_angles
-                [[(i/10.0), (i/10.0), 1] for i in range(num_hand_landmarks_per_hand)], # right_hand_data
-                [0]*len(angle_names_base),  # right_hand_angles
-                [[(i/10.0), (i/10.0), 1] for i in range(num_face_landmarks)]  # face_data
-            )
-            for _ in range(5)  # 5 frames total
-        ]
-
-    # Now actually process them
-    all_rows = []
-    for action, all_frames in st.session_state['actions'].items():
-        if all_frames is not None and len(all_frames) > 1:
-            # Flatten each frame
-            flat_landmarks_per_frame = []
-            for f in all_frames:
-                (pose_data,
-                 left_hand_data,
-                 left_hand_angles_data,
-                 right_hand_data,
-                 right_hand_angles_data,
-                 face_data) = f
-
-                flattened = flatten_landmarks(
-                    pose_data,
-                    left_hand_data,
-                    left_hand_angles_data,
-                    right_hand_data,
-                    right_hand_angles_data,
-                    face_data
-                )
-                flat_landmarks_per_frame.append(flattened)
-
-            flat_landmarks_per_frame = np.array(flat_landmarks_per_frame)
-
-            # Identify keyframes
-            keyframes = identify_keyframes(
-                flat_landmarks_per_frame,
-                velocity_threshold=0.1,
-                acceleration_threshold=0.1
-            )
-
-            # For each keyframe, add a row to the queue
-            for kf in keyframes:
-                if kf < len(all_frames):
-                    st.session_state['sequence_id'] += 1
-                    (pose_data,
-                     left_hand_data,
-                     left_hand_angles_data,
-                     right_hand_data,
-                     right_hand_angles_data,
-                     face_data) = all_frames[kf]
-
-                    row_data = flatten_landmarks(
-                        pose_data,
-                        left_hand_data,
-                        left_hand_angles_data,
-                        right_hand_data,
-                        right_hand_angles_data,
-                        face_data
-                    )
-                    row = [action, st.session_state['sequence_id']] + row_data.tolist()
-                    add_to_queue(row)
-
-    # Simple feedback
-    qsize = st.session_state.data_queue.qsize()
-    st.success(f"Keyframe data extracted and added to queue! Queue size now: {qsize}")
-
-# ------------------------------------------------------------
-# Buttons to Write or Display CSV
-# ------------------------------------------------------------
-col1, col2 = st.columns(2)
-
-with col1:
-    if st.button("Write Queue to CSV"):
-        write_queue_to_csv(csv_file)
-
-with col2:
-    if st.button("Display CSV"):
-        display_csv(csv_file)
+# Display the CSV contents
+if os.path.exists(csv_file):
+    df = pd.read_csv(csv_file)
+    st.dataframe(df)
+else:
+    st.info("No CSV file exists yet.")
