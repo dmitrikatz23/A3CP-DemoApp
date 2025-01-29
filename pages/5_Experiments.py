@@ -17,7 +17,6 @@ import time
 import pandas as pd
 import os
 from datetime import datetime
-from huggingface_hub import Repository
 
 
 import sys
@@ -31,7 +30,7 @@ logging.basicConfig(level=logging.DEBUG, format='%(asctime)s - %(levelname)s - %
 
 # Initialize session state queue
 if "data_queue" not in st.session_state:
-    st.session_state.data_queue = Queue(maxsize = 1000)
+    st.session_state.data_queue = Queue(maxsize=1000)
 
 #debug helper function
 def validate_frame_data(frame_data):
@@ -54,6 +53,12 @@ def validate_frame_data(frame_data):
     return True, None
 
 logging.getLogger("twilio").setLevel(logging.WARNING)
+
+# ---------------------------
+# Hugging Face Integration
+# ---------------------------
+from huggingface_hub import Repository
+
 logger = logging.getLogger(__name__)
 
 # -----------------------------------
@@ -353,12 +358,9 @@ def video_frame_callback(frame: av.VideoFrame) -> av.VideoFrame:
         "face_data": face_data,
     }
 
-    if not st.session_state.data_queue.full():
-        st.session_state.data_queue.put(frame_data)
-
+    # Use the GLOBAL queue
+    st.session_state.data_queue.put(frame_data)
     return av.VideoFrame.from_ndarray(annotated_image, format="bgr24")
-
-
 
 # -----------------------------------
 # Hugging Face Setup
@@ -567,59 +569,109 @@ with left_col:
             async_processing=True,
         )
 
-            
-# Streamlit Button to Save CSV
-def save_to_csv():
-    if "data_queue" not in st.session_state or st.session_state["data_queue"].empty():
-        st.warning("The queue is empty. No data to save.")
-        return
+# Streamlit Button to Process Frames
+if st.button("Process Frames"):
 
+    while not st.session_state.data_queue.empty():
+        frame_data = st.session_state.data_queue.get()
+
+        if st.session_state.get("action_confirmed") and st.session_state.get("current_action"):
+            action_word = st.session_state["current_action"]
+            if action_word not in st.session_state["actions"]:
+                st.session_state["actions"][action_word] = []
+
+            st.session_state["actions"][action_word].append(frame_data)
+
+
+# Streamlit Button to Save CSV
+if st.button("Process & Save to CSV"):
     all_rows = []
 
-    try:
-        # Dequeue data and process frames
-        while not st.session_state["data_queue"].empty():
-            frame_data = st.session_state["data_queue"].get()
+    # 1) Decide how many frames to process from the queue
+    queue_size = st.session_state.data_queue.qsize()
+    frame_count = min(50, queue_size)  # Example: process up to 50 frames for debugging
+    logging.debug(f"[Process & Save to CSV] Processing up to {frame_count} frames from the queue.")
 
-            try:
-                # Flatten landmarks
-                row_data = flatten_landmarks(
-                    frame_data["pose_data"],
-                    frame_data["left_hand_data"],
-                    frame_data["left_hand_angles_data"],
-                    frame_data["right_hand_data"],
-                    frame_data["right_hand_angles_data"],
-                    frame_data["face_data"]
+    # 2) Dequeue frames and validate
+    for _ in range(frame_count):
+        try:
+            frame_data = st.session_state.data_queue.get()
+            logging.debug(f"[Process & Save to CSV] Dequeued frame_data: {frame_data}")
+
+            # Validate the frame_data
+            is_valid, missing_key = validate_frame_data(frame_data)
+            if not is_valid:
+                logging.warning(f"[Process & Save to CSV] Invalid frame_data. Missing or empty key: {missing_key}")
+                continue  # Skip this invalid frame
+
+            # Log key details
+            for key, value in frame_data.items():
+                logging.debug(
+                    f"[Process & Save to CSV] Key '{key}': Type={type(value)}, Sample={str(value)[:100]}"
                 )
-                # Add action and sequence ID
-                action = frame_data.get("action", "unknown_action")
-                st.session_state["sequence_id"] += 1
-                row = [action, st.session_state["sequence_id"]] + row_data
-                all_rows.append(row)
 
-            except Exception as e:
-                logging.error(f"Error processing frame data: {e}")
+        except Exception as e:
+            logging.error(f"[Process & Save to CSV] Error processing frame_data: {e}")
+            continue
 
-        # Write all rows to CSV
-        if all_rows:
-            csv_file = st.session_state.get("csv_file", "output.csv")  # Default filename
+        # 3) Append frame_data to session state for the current action
+        if st.session_state.get("action_confirmed") and st.session_state.get("current_action"):
+            action_word = st.session_state["current_action"]
+            if action_word not in st.session_state["actions"]:
+                st.session_state["actions"][action_word] = []
+            st.session_state["actions"][action_word].append(frame_data)
+
+            # Confirm frame append success
+            logging.debug(
+                f"[Process & Save to CSV] Frame appended. Action '{action_word}' now "
+                f"has {len(st.session_state['actions'][action_word])} frames."
+            )
+
+    # 4) Flatten frames into rows for CSV
+    if "actions" in st.session_state:
+        for action, frames in st.session_state["actions"].items():
+            if frames:
+                logging.debug(f"[Process & Save to CSV] Processing action '{action}' with {len(frames)} frames.")
+                for index, frame_data in enumerate(frames):
+                    try:
+                        # Flatten landmarks
+                        row_data = flatten_landmarks(
+                            frame_data["pose_data"],
+                            frame_data["left_hand_data"],
+                            frame_data["left_hand_angles_data"],
+                            frame_data["right_hand_data"],
+                            frame_data["right_hand_angles_data"],
+                            frame_data["face_data"]
+                        )
+                        # Add action and sequence ID
+                        st.session_state["sequence_id"] += 1
+                        row = [action, st.session_state["sequence_id"]] + row_data
+                        all_rows.append(row)
+                        logging.debug(
+                            f"[Process & Save to CSV] Flattened row {index + 1}/{len(frames)} "
+                            f"for action '{action}': {row[:10]}..."
+                        )
+                    except Exception as e:
+                        logging.error(
+                            f"[Process & Save to CSV] Error flattening frame {index + 1} "
+                            f"for action '{action}': {e}"
+                        )
+
+    # 5) Write rows to CSV
+    if all_rows:
+        try:
             with open(csv_file, mode="a", newline="") as f:
                 csv_writer = csv.writer(f)
                 csv_writer.writerows(all_rows)
             st.success(f"Saved {len(all_rows)} rows to CSV: {csv_file}")
-            logging.info(f"Successfully wrote {len(all_rows)} rows to CSV.")
-        else:
-            st.warning("No valid rows to write to CSV.")
+            logging.info(f"[Process & Save to CSV] Successfully wrote {len(all_rows)} rows to CSV.")
+        except Exception as e:
+            st.error(f"Error writing to CSV: {e}")
+            logging.error(f"[Process & Save to CSV] CSV write failure: {e}")
+    else:
+        st.warning("No rows to write to CSV.")
+        logging.warning("[Process & Save to CSV] No rows were written to CSV because 'all_rows' is empty.")
 
-    except Exception as e:
-        st.error(f"Error during saving process: {e}")
-        logging.error(f"Save to CSV process failed: {e}")
-
-if st.button("Save to CSV"):
-    save_to_csv()
-
-
-#save to hugging face added here
 
 
 
