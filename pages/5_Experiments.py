@@ -569,7 +569,7 @@ with left_col:
 
             
 # Streamlit Button to Save CSV
-if st.button("Save to CSV"):
+def save_to_csv():
     if "data_queue" not in st.session_state or st.session_state["data_queue"].empty():
         st.warning("The queue is empty. No data to save.")
         return
@@ -591,7 +591,7 @@ if st.button("Save to CSV"):
                     frame_data["right_hand_angles_data"],
                     frame_data["face_data"]
                 )
-                # Add action and sequence ID (action should be part of frame_data or st.session_state)
+                # Add action and sequence ID
                 action = frame_data.get("action", "unknown_action")
                 st.session_state["sequence_id"] += 1
                 row = [action, st.session_state["sequence_id"]] + row_data
@@ -602,7 +602,7 @@ if st.button("Save to CSV"):
 
         # Write all rows to CSV
         if all_rows:
-            csv_file = st.session_state["csv_file"]  # Ensure csv_file is initialized earlier
+            csv_file = st.session_state.get("csv_file", "output.csv")  # Default filename
             with open(csv_file, mode="a", newline="") as f:
                 csv_writer = csv.writer(f)
                 csv_writer.writerows(all_rows)
@@ -614,6 +614,9 @@ if st.button("Save to CSV"):
     except Exception as e:
         st.error(f"Error during saving process: {e}")
         logging.error(f"Save to CSV process failed: {e}")
+
+if st.button("Save to CSV"):
+    save_to_csv()
 
 
 #save to hugging face added here
