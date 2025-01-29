@@ -1,21 +1,19 @@
-#test if csv is being made
+from pathlib import Path
 import os
-import csv
-from datetime import datetime
 
-csv_folder = "csv"
-if not os.path.exists(csv_folder):
-    os.makedirs(csv_folder)
+# Set up the path for the CSV folder to be one level up from the `pages` folder
+pages_folder = Path(__file__).resolve().parent  # Location of the current file (assumed to be in `pages`)
+csv_folder = pages_folder.parent / "csv"  # One level up from `pages`
 
-csv_file = os.path.join(csv_folder, f"test_file_{datetime.now().strftime('%Y-%m-%d_%H-%M-%S')}.csv")
+# Ensure the folder exists
+if not csv_folder.exists():
+    csv_folder.mkdir(parents=True)
+    st.write(f"Created CSV folder: {csv_folder}")
 
-header = ["column1", "column2", "column3"]
-rows = [["data1", "data2", "data3"], ["data4", "data5", "data6"]]
+# Initialize the CSV file path
+if "csv_file" not in st.session_state:
+    session_start_str = datetime.now().strftime("%Y-%m-%d_%H-%M-%S")
+    st.session_state["csv_file"] = csv_folder / f"all_actions_recorded_{session_start_str}.csv"
 
-if not os.path.exists(csv_file):
-    with open(csv_file, mode="w", newline="") as f:
-        writer = csv.writer(f)
-        writer.writerow(header)
-        writer.writerows(rows)
-
-print(f"CSV file created at: {csv_file}")
+csv_file = st.session_state["csv_file"]
+st.write(f"CSV file path: {csv_file}")
