@@ -547,7 +547,11 @@ if st.button("Save Keyframes to CSV"):
 # Display the saved CSV preview
 if "last_saved_csv" in st.session_state:
     st.subheader("Saved Keyframes CSV Preview:")
-    df_display = pd.read_csv(st.session_state["last_saved_csv"])
+    
+    # Read only the first 5 columns
+    df_display = pd.read_csv(st.session_state["last_saved_csv"], usecols=range(5))
+    
+    # Display the first 5 columns
     st.dataframe(df_display)
 
 
