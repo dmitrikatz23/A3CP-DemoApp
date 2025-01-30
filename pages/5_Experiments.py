@@ -444,7 +444,9 @@ with left_col:
         st.session_state['actions'][action_word] = None
         st.session_state['action_confirmed'] = True
         st.session_state['active_streamer_key'] = f"record-actions-{sanitized_action_word}"
+        st.session_state['action_word'] = action_word  #trying to get class in csv
         st.success(f"Action '{action_word}' confirmed!")
+
 
     # If an action has been confirmed, show the WebRTC streamer
     if st.session_state.get('action_confirmed', False):
@@ -460,18 +462,6 @@ with left_col:
             video_frame_callback=video_frame_callback,
             async_processing=True,
         )
-
-# debugging to check if queue has data
-
-if st.button("Check Queue Before Saving"):
-    landmark_data = get_landmark_queue()  # Retrieve stored landmarks safely
-
-    if len(landmark_data) > 0:
-        st.write(f"✅ Landmark queue has {len(landmark_data)} frames.")
-        st.write(f"🔍 First frame (first 10 values): {list(landmark_data)[0][:10]}")
-        st.write(f"🔍 Last frame (first 10 values): {list(landmark_data)[-1][:10]}")
-    else:
-        st.warning("⚠️ Landmark queue is empty! Nothing to save.")
 
 
 # -----------------------------------
@@ -502,7 +492,12 @@ if st.button("Save Keyframes to CSV"):
             if kf < len(flat_landmarks_per_frame):
                 st.session_state['sequence_id'] += 1
                 row_data = flat_landmarks_per_frame[kf]
-                row = [st.session_state.get("action_word", "Unknown_Action"), st.session_state['sequence_id']] + row_data.tolist()
+                
+                # **Retrieve the action word from session state**
+                action_class = st.session_state.get("action_word", "Unknown_Action")
+
+                # **Construct the row with the action word in the 'class' column**
+                row = [action_class, st.session_state['sequence_id']] + row_data.tolist()
                 all_rows.append(row)
 
         if all_rows:
