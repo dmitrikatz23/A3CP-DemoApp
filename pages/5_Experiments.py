@@ -71,6 +71,17 @@ def get_landmark_queue():
     logging.info(f"🟡 Current queue size BEFORE calling get_landmark_queue(): {len(queue_copy)}")
     return queue_copy  # Returns a copy to avoid modification issues
 
+def get_landmark_queue():
+    """Thread-safe function to retrieve a copy of the landmark queue."""
+    with lock:
+        queue_snapshot = list(landmark_queue)  # Copy queue safely
+
+    # Store snapshot for session persistence
+    st.session_state.landmark_queue_snapshot = queue_snapshot
+    logging.info(f"🟡 Snapshot taken with {len(queue_snapshot)} frames.")
+
+    return queue_snapshot  # Return the copied queue
+
 def clear_landmark_queue():
     """Thread-safe function to clear the landmark queue."""
     with lock:
@@ -480,28 +491,25 @@ if st.button("Check Queue Before Saving"):
 # -----------------------------------
 if st.button("Save Keyframes to CSV"):
     logging.info("🟡 Fetching landmarks before WebRTC disconnects...")
-    
-    # Store the queue in session state before anything else
-    st.session_state.landmark_queue_snapshot = list(landmark_queue)
-    
-    logging.info(f"🟡 Current queue size BEFORE calling get_landmark_queue(): {len(st.session_state.landmark_queue_snapshot)}")
 
-    landmark_data = st.session_state.landmark_queue_snapshot  # Use stored snapshot
+    # Retrieve snapshot or fall back to the queue
+    if "landmark_queue_snapshot" in st.session_state:
+        landmark_data = st.session_state.landmark_queue_snapshot
+    else:
+        landmark_data = get_landmark_queue()  # Ensure we fetch it
+
+    logging.info(f"🟡 Current queue size BEFORE saving: {len(landmark_data)}")
 
     if len(landmark_data) > 1:
         all_rows = []
-
-        # Convert deque to NumPy array for keyframe analysis
         flat_landmarks_per_frame = np.array(landmark_data)
 
-        # Identify keyframes
         keyframes = identify_keyframes(
             flat_landmarks_per_frame,
             velocity_threshold=0.1,
             acceleration_threshold=0.1
         )
 
-        # Extract keyframe data
         for kf in keyframes:
             if kf < len(flat_landmarks_per_frame):
                 st.session_state['sequence_id'] += 1
@@ -509,27 +517,25 @@ if st.button("Save Keyframes to CSV"):
                 row = [st.session_state.get("action_word", "Unknown_Action"), st.session_state['sequence_id']] + row_data.tolist()
                 all_rows.append(row)
 
-        # Save only keyframes to CSV
         if all_rows:
             csv_filename = f"keyframes_{datetime.now().strftime('%Y-%m-%d_%H-%M-%S')}.csv"
             csv_path = os.path.join("csv", csv_filename)
 
             with open(csv_path, mode='w', newline='') as f:
                 csv_writer = csv.writer(f)
-                csv_writer.writerow(header)  # Use correct header
+                csv_writer.writerow(header)
                 csv_writer.writerows(all_rows)
 
             st.session_state["last_saved_csv"] = csv_path
             st.success(f"Keyframes saved to {csv_filename}")
 
-            # Clear queue after saving
             clear_landmark_queue()
-
         else:
             st.warning("⚠️ No keyframes detected. Try again.")
     else:
         logging.info("🟡 Retrieved 0 frames for saving.")
         st.warning("⚠️ Landmark queue is empty! Nothing to save.")
+
 
 
 
