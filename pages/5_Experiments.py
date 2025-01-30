@@ -34,6 +34,7 @@ logger = logging.getLogger(__name__)
 # Streamlit Page Configuration
 # -----------------------------------
 st.set_page_config(layout="wide")
+logging.info("page config")
 
 
 # -----------------------------------
