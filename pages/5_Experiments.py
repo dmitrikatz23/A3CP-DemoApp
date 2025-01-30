@@ -28,7 +28,17 @@ from sample_utils.turn import get_ice_servers
 # -----------------------------------
 # Logging Setup
 # -----------------------------------
+logging.basicConfig(
+    level=logging.DEBUG,  # Change to logging.INFO if too verbose
+    format="%(asctime)s [%(levelname)s] %(message)s",
+    handlers=[
+        logging.StreamHandler(),  # Print to console
+        logging.FileHandler("app_debug.log", mode='w')  # Save logs to a file
+    ]
+)
+
 logger = logging.getLogger(__name__)
+logger.info("🚀 Logging is initialized!")
 
 # -----------------------------------
 # Streamlit Page Configuration
