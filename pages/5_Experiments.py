@@ -45,9 +45,9 @@ landmark_queue = deque(maxlen=1000)
 lock = threading.Lock()  # Thread-safe lock for WebRTC thread access
 
 def store_landmarks(row_data):
-    """Thread-safe function to store landmark data."""
     with lock:  # Ensures only one thread writes at a time
         landmark_queue.append(row_data)
+    
     logging.info(f"Stored {len(landmark_queue)} frames in queue")  #debugging
     logging.info(f"First 5 values: {row_data[:5]}")  # Debug first few values
 
@@ -311,10 +311,8 @@ def identify_keyframes(
 # WebRTC Video Callback
 # -----------------------------------
 def video_frame_callback(frame: av.VideoFrame) -> av.VideoFrame:
-    """
-    WebRTC callback to process frames using MediaPipe and store landmark data in a thread-safe queue.
-    """
     input_bgr = frame.to_ndarray(format="bgr24")
+    logging.info("📷 video_frame_callback triggered")  # Debugging
 
     # Process frame with MediaPipe
     (
@@ -326,6 +324,11 @@ def video_frame_callback(frame: av.VideoFrame) -> av.VideoFrame:
         right_hand_angles,
         face_data
     ) = process_frame(input_bgr)
+
+    if pose_data or left_hand_data or right_hand_data or face_data:
+        logging.info("🟢 Landmarks detected, processing...")
+    else:
+        logging.warning("⚠️ No landmarks detected, skipping storage.")
 
     # Flatten and store landmarks
     row_data = flatten_landmarks(
