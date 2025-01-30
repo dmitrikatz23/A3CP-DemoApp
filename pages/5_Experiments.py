@@ -50,6 +50,17 @@ def store_landmarks(row_data):
         landmark_queue.append(row_data)
     logging.info(f"Stored {len(landmark_queue)} frames in queue")  #debugging
 
+def get_landmark_queue():
+    """Thread-safe function to retrieve a copy of the landmark queue."""
+    with lock:  # Ensures safe access to the queue
+        return list(landmark_queue)  # Returns a copy to avoid modification issues
+
+def clear_landmark_queue():
+    """Thread-safe function to clear the landmark queue."""
+    with lock:
+        landmark_queue.clear()
+    logging.info("🟡 Landmark queue cleared.")  # Log clearing event
+
 # -----------------------------------
 # MediaPipe Initialization & Landmark Constants
 # -----------------------------------
@@ -424,16 +435,14 @@ with left_col:
 # -----------------------------------
 # Right/Main Area: Recorded Actions
 # -----------------------------------
-st.header("Save Keyframes to CSV")
-
 if st.button("Save Keyframes to CSV"):
-    landmark_queue = get_landmark_queue()  # Retrieve stored landmarks
+    landmark_data = get_landmark_queue()  # Retrieve stored landmarks safely
 
-    if len(landmark_queue) > 1:
+    if len(landmark_data) > 1:
         all_rows = []
 
         # Convert deque to NumPy array for keyframe analysis
-        flat_landmarks_per_frame = np.array(list(landmark_queue))
+        flat_landmarks_per_frame = np.array(landmark_data)
 
         # Identify keyframes
         keyframes = identify_keyframes(
@@ -463,8 +472,12 @@ if st.button("Save Keyframes to CSV"):
             st.session_state["last_saved_csv"] = csv_path
             st.success(f"Keyframes saved to {csv_filename}")
 
+            # Clear queue after saving
+            clear_landmark_queue()
+
         else:
             st.warning("No keyframes detected. Try again.")
+
 
 # Display the saved CSV preview
 if "last_saved_csv" in st.session_state:
@@ -475,12 +488,12 @@ if "last_saved_csv" in st.session_state:
 
 
 st.subheader("Debugging: Landmark Queue Status")
-if "landmark_queue" in st.session_state:
-    st.write(f"Stored frames in queue: {len(st.session_state.landmark_queue)}")
-    
-    # Show the latest 10 values from the last stored frame for verification
-    if len(st.session_state.landmark_queue) > 0:
-        latest_frame = list(st.session_state.landmark_queue)[-1]
-        st.write(f"Latest frame (first 10 values): {latest_frame[:10]}")
+
+landmark_data = get_landmark_queue()
+st.write(f"Stored frames in queue: {len(landmark_data)}")
+
+if len(landmark_data) > 0:
+    latest_frame = landmark_data[-1]
+    st.write(f"Latest frame (first 10 values): {latest_frame[:10]}")
 else:
     st.warning("No landmarks stored yet.")
