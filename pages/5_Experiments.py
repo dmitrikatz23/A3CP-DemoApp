@@ -39,15 +39,15 @@ st.set_page_config(layout="wide")
 # Threading problem
 # -----------------------------------
 
-# Persistent storage for landmark data across threads
-@st.experimental_memo
+# Use st.cache_data to persist landmarks across threads
+@st.cache_data
 def get_landmark_queue():
     return deque(maxlen=1000)  # Persistent queue for storing landmarks
 
 def store_landmarks(row_data):
-    """Thread-safe method to store landmark data"""
+    """Thread-safe function to store landmark data."""
     queue = get_landmark_queue()
-    queue.append(row_data)  # Store data safely
+    queue.append(row_data)  # Store landmark data safely
     return queue  # Return updated queue
 
 # -----------------------------------
@@ -431,7 +431,7 @@ with left_col:
 st.header("Save Keyframes to CSV")
 
 if st.button("Save Keyframes to CSV"):
-    landmark_queue = get_landmark_queue()
+    landmark_queue = get_landmark_queue()  # Retrieve stored landmarks
 
     if len(landmark_queue) > 1:
         all_rows = []
@@ -477,11 +477,6 @@ if "last_saved_csv" in st.session_state:
     st.dataframe(df_display)
 
 
-# Display the saved CSV preview
-if "last_saved_csv" in st.session_state:
-    st.subheader("Saved Keyframes CSV Preview:")
-    df_display = pd.read_csv(st.session_state["last_saved_csv"])
-    st.dataframe(df_display)
 
 st.subheader("Debugging: Landmark Queue Status")
 if "landmark_queue" in st.session_state:
