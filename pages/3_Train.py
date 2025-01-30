@@ -1,7 +1,7 @@
-#this is a version that does not write data from queue to csv
+# This version is a corrected copy of 5_Experiments with working deque to see if it fixes some identified issues
+
 
 import logging
-from queue import Queue
 from pathlib import Path
 from typing import List, NamedTuple
 import mediapipe as mp
@@ -9,7 +9,6 @@ import av
 import cv2
 import numpy as np
 import streamlit as st
-from streamlit import session_state  
 from streamlit_webrtc import WebRtcMode, webrtc_streamer
 import re
 import csv
@@ -17,49 +16,75 @@ import time
 import pandas as pd
 import os
 from datetime import datetime
-
-
+from collections import deque
+import threading
 import sys
 sys.path.append(str(Path(__file__).resolve().parent.parent))
-
 from sample_utils.download import download_file
 from sample_utils.turn import get_ice_servers
 
-# Configure logging
-logging.basicConfig(level=logging.DEBUG, format='%(asctime)s - %(levelname)s - %(message)s')
-
-# Initialize session state queue
-if "data_queue" not in st.session_state:
-    st.session_state.data_queue = Queue()
-
-#debug helper function
-def validate_frame_data(frame_data):
-
-    required_keys = [
-        "pose_data",
-        "left_hand_data",
-        "left_hand_angles_data",
-        "right_hand_data",
-        "right_hand_angles_data",
-        "face_data"
+# -----------------------------------
+# Logging Setup
+# -----------------------------------
+logging.basicConfig(
+    level=logging.DEBUG,  # Change to logging.INFO if too verbose
+    format="%(asctime)s [%(levelname)s] %(message)s",
+    handlers=[
+        logging.StreamHandler(),  # Print to console
+        logging.FileHandler("app_debug.log", mode='w')  # Save logs to a file
     ]
-    if not isinstance(frame_data, dict):
-        return False, "frame_data is not a dictionary"
-
-    for key in required_keys:
-        if key not in frame_data or not frame_data[key]:
-            return False, key  # Missing or empty key
-
-    return True, None
-
-logging.getLogger("twilio").setLevel(logging.WARNING)
-
-# ---------------------------
-# Hugging Face Integration
-# ---------------------------
-from huggingface_hub import Repository
+)
 
 logger = logging.getLogger(__name__)
+logger.info("🚀 Logging is initialized!")
+
+
+# -----------------------------------
+# Threading problem
+# -----------------------------------
+
+# Ensure queue persists across Streamlit reruns
+if "landmark_queue" not in st.session_state:
+    st.session_state.landmark_queue = deque(maxlen=1000)
+
+# Use the stored queue in session state
+landmark_queue = st.session_state.landmark_queue
+
+# Thread-safe lock for WebRTC thread access
+if "lock" not in st.session_state:
+    st.session_state.lock = threading.Lock()
+
+lock = st.session_state.lock
+
+# Initialize landmark_queue_snapshot
+if 'landmark_queue_snapshot' not in st.session_state:
+    st.session_state['landmark_queue_snapshot'] = []
+
+def store_landmarks(row_data):
+    with lock:  # Ensures only one thread writes at a time
+        landmark_queue.append(row_data)
+    
+    logging.info(f"Stored {len(landmark_queue)} frames in queue")  # Debugging
+    logging.info(f"First 5 values: {row_data[:5]}")  # Debug first few values
+
+def get_landmark_queue():
+    """Thread-safe function to retrieve a copy of the landmark queue."""
+    with lock:
+        queue_snapshot = list(landmark_queue)  # Copy queue safely
+
+    # Store snapshot for session persistence
+    st.session_state.landmark_queue_snapshot = queue_snapshot
+    logging.info(f"🟡 Snapshot taken with {len(queue_snapshot)} frames.")
+
+    return queue_snapshot  # Return the copied queue
+
+def clear_landmark_queue():
+    """Thread-safe function to clear the landmark queue."""
+    with lock:
+        logging.info(f"🟡 Clearing queue... Current size: {len(landmark_queue)}")
+        landmark_queue.clear()
+    logging.info("🟡 Landmark queue cleared.")
+
 
 # -----------------------------------
 # Streamlit Page Configuration
@@ -119,36 +144,6 @@ def load_csv_header():
 header = load_csv_header()
 
 # -----------------------------------
-# CSV Setup
-# -----------------------------------
-csv_folder = "csv"
-if not os.path.exists(csv_folder):
-    os.makedirs(csv_folder)
-
-# If a CSV file hasn't been set in session state, create one with a timestamped name
-if "csv_file" not in st.session_state:
-    session_start_str = datetime.now().strftime("%Y-%m-%d_%H-%M-%S")
-    st.session_state["csv_file"] = os.path.join(csv_folder, f"all_actions_recorded_{session_start_str}.csv")
-
-csv_file = st.session_state["csv_file"]
-
-@st.cache_data
-def initialize_csv(file_name, header):
-    """
-    Initialize the CSV file with the header row if it doesn't exist.
-    """
-    if not os.path.exists(file_name):
-        with open(file_name, mode='w', newline='') as f:
-            csv_writer = csv.writer(f)
-            csv_writer.writerow(header)
-    return True
-
-if "csv_initialized" not in st.session_state:
-    st.session_state["csv_initialized"] = initialize_csv(csv_file, header)
-
-
-
-# -----------------------------------
 # MediaPipe Model Loader
 # -----------------------------------
 @st.cache_resource
@@ -189,33 +184,36 @@ def hand_angles(hand_landmarks):
     if (not hand_landmarks) or all((p[0] == 0 and p[1] == 0 and p[2] == 0) for p in hand_landmarks):
         return [0] * len(angle_names_base)
 
+    # Convert list of landmarks into a dict for easy indexing
     h = {i: hand_landmarks[i] for i in range(len(hand_landmarks))}
-    def pt(i): return [h[i][0], h[i][1]]
+    def pt(i):
+        return [h[i][0], h[i][1]]
 
     # Thumb angles
     thumb_mcp = calculate_angle(pt(1), pt(2), pt(3))
     thumb_ip  = calculate_angle(pt(2), pt(3), pt(4))
 
-    # Index finger
+    # Index finger angles
     index_mcp = calculate_angle(pt(0), pt(5), pt(6))
     index_pip = calculate_angle(pt(5), pt(6), pt(7))
     index_dip = calculate_angle(pt(6), pt(7), pt(8))
 
-    # Middle finger
+    # Middle finger angles
     middle_mcp = calculate_angle(pt(0), pt(9), pt(10))
     middle_pip = calculate_angle(pt(9), pt(10), pt(11))
     middle_dip = calculate_angle(pt(10), pt(11), pt(12))
 
-    # Ring finger
+    # Ring finger angles
     ring_mcp = calculate_angle(pt(0), pt(13), pt(14))
     ring_pip = calculate_angle(pt(13), pt(14), pt(15))
     ring_dip = calculate_angle(pt(14), pt(15), pt(16))
 
-    # Little finger
+    # Little finger angles
     little_mcp = calculate_angle(pt(0), pt(17), pt(18))
     little_pip = calculate_angle(pt(17), pt(18), pt(19))
     little_dip = calculate_angle(pt(18), pt(19), pt(20))
 
+    # Return all angles in a flat list
     return [
         thumb_mcp, thumb_ip,
         index_mcp, index_pip, index_dip,
@@ -229,8 +227,12 @@ def process_frame(frame):
     Process a single BGR frame with MediaPipe Holistic.
     Returns:
         annotated_image: The original frame annotated with landmarks.
-        pose_data, left_hand_data, left_hand_angles_data,
-        right_hand_data, right_hand_angles_data, face_data
+        pose_data: 2D + visibility for each pose landmark.
+        left_hand_data: 2D + visibility for each landmark in the left hand.
+        left_hand_angles_data: The angles computed for the left hand joints.
+        right_hand_data: 2D + visibility for each landmark in the right hand.
+        right_hand_angles_data: The angles computed for the right hand joints.
+        face_data: 2D + visibility for each face landmark.
     """
     image_rgb = cv2.cvtColor(frame, cv2.COLOR_BGR2RGB)
     results = holistic_model.process(image_rgb)
@@ -246,6 +248,7 @@ def process_frame(frame):
     if results.pose_landmarks:
         mp_drawing.draw_landmarks(annotated_image, results.pose_landmarks, mp_holistic.POSE_CONNECTIONS)
 
+    # Extract data
     def extract_data(landmarks, count):
         return [[lm.x, lm.y, lm.visibility] for lm in landmarks.landmark] if landmarks else [[0, 0, 0]] * count
 
@@ -254,6 +257,7 @@ def process_frame(frame):
     right_hand_data = extract_data(results.right_hand_landmarks, num_hand_landmarks_per_hand)
     face_data = extract_data(results.face_landmarks, num_face_landmarks)
 
+    # Compute joint angles for hands
     left_hand_angles_data = hand_angles(left_hand_data)
     right_hand_angles_data = hand_angles(right_hand_data)
 
@@ -297,7 +301,7 @@ def flatten_landmarks(
 def calculate_velocity(landmarks):
     """
     Calculate velocity from landmark coordinates (frame-to-frame displacement).
-    `landmarks` is a NxM array representing frames.
+    Expected input: NxM array (N frames, M features).
     """
     velocities = []
     for i in range(1, len(landmarks)):
@@ -322,7 +326,7 @@ def identify_keyframes(
 ):
     """
     Identify keyframes based on velocity and acceleration thresholds.
-    `landmarks` is a NxM array representing frames by flattened features.
+    `landmarks` is a NxM array representing frames (N) by flattened features (M).
     """
     velocities = calculate_velocity(landmarks)
     accelerations = calculate_acceleration(velocities)
@@ -335,186 +339,71 @@ def identify_keyframes(
 # -----------------------------------
 # WebRTC Video Callback
 # -----------------------------------
-
-
-
 def video_frame_callback(frame: av.VideoFrame) -> av.VideoFrame:
     input_bgr = frame.to_ndarray(format="bgr24")
+    logging.info("📷 video_frame_callback triggered")  # Debugging
 
-    (annotated_image,
-     pose_data,
-     left_hand_data,
-     left_hand_angles_data,
-     right_hand_data,
-     right_hand_angles_data,
-     face_data) = process_frame(input_bgr)
+    # Process frame with MediaPipe
+    (
+        annotated_image,
+        pose_data,
+        left_hand_data,
+        left_hand_angles,
+        right_hand_data,
+        right_hand_angles,
+        face_data
+    ) = process_frame(input_bgr)
 
-    frame_data = {
-        "pose_data": pose_data,
-        "left_hand_data": left_hand_data,
-        "left_hand_angles_data": left_hand_angles_data,
-        "right_hand_data": right_hand_data,
-        "right_hand_angles_data": right_hand_angles_data,
-        "face_data": face_data,
-    }
+    if pose_data or left_hand_data or right_hand_data or face_data:
+        logging.info("🟢 Landmarks detected, processing...")
+    else:
+        logging.warning("⚠️ No landmarks detected, skipping storage.")
 
-    logging.debug(
-        f"Enqueuing frame_data sample: pose[0]={pose_data[0] if pose_data else 'None'}, "
-        f"left_hand[0]={left_hand_data[0] if left_hand_data else 'None'}"
+    # Flatten and store landmarks
+    row_data = flatten_landmarks(
+        pose_data,
+        left_hand_data,
+        left_hand_angles,
+        right_hand_data,
+        right_hand_angles,
+        face_data
     )
 
-    # Use the GLOBAL queue
-    frame_queue.put(frame_data)
-    logging.debug(f"Frame added to queue. Queue size: {frame_queue.qsize()}")
+    if row_data and any(row_data):  # Ensure data is not empty
+        logging.info("Storing landmarks in queue...")
+        store_landmarks(row_data)
+    else:
+        logging.warning("⚠️ No valid landmarks detected. Skipping storage.")
 
     return av.VideoFrame.from_ndarray(annotated_image, format="bgr24")
 
 
-
-
-
 # -----------------------------------
-# Hugging Face Setup
+# CSV Setup
 # -----------------------------------
-hf_token = os.getenv("Recorded_Datasets")  # Must be set in your HF Spaces secrets
+csv_folder = "csv"
+if not os.path.exists(csv_folder):
+    os.makedirs(csv_folder)
 
-repo = None
-if hf_token:
-    repo_name = "dk23/A3CP_actions"  # Your dataset repository
-    local_repo_path = "local_repo"
-    git_user = "A3CP_bot"
-    git_email = "no-reply@huggingface.co"
+# If a CSV file hasn't been set in session state, create one with a timestamped name
+if "csv_file" not in st.session_state:
+    session_start_str = datetime.now().strftime("%Y-%m-%d_%H-%M-%S")
+    st.session_state["csv_file"] = os.path.join(csv_folder, f"my_actions_{session_start_str}.csv")
 
-    try:
-        repo = Repository(
-            local_dir=local_repo_path,
-            clone_from=repo_name,
-            use_auth_token=hf_token,
-            repo_type="dataset"
-        )
-        repo.git_config_username_and_email(git_user, git_email)
-    except Exception as e:
-        st.error(f"Error setting up Hugging Face repository: {e}")
-else:
-    st.warning("Hugging Face token not found. CSV will only be saved locally.")
+csv_file = st.session_state["csv_file"]
 
-def save_csv_to_huggingface():
+@st.cache_data
+def initialize_csv(file_name, header):
     """
-    Pushes the local CSV to Hugging Face if repo is configured.
+    Initialize the CSV file with the header row if it doesn't exist.
     """
-    if not repo:
-        st.info("No Hugging Face repository configured; skipping push.")
-        return
+    with open(file_name, mode='w', newline='') as f:
+        csv_writer = csv.writer(f)
+        csv_writer.writerow(header)
+    return True
 
-    if not os.path.exists(csv_file):
-        st.warning("No CSV file found to save.")
-        return
-
-    try:
-        # Copy CSV into local repo folder
-        df = pd.read_csv(csv_file)
-        os.makedirs(repo.local_dir, exist_ok=True)
-        csv_repo_path = os.path.join(repo.local_dir, os.path.basename(csv_file))
-        df.to_csv(csv_repo_path, index=False)
-
-        # Commit and push
-        repo.git_add(csv_file)
-        repo.git_commit("Update A3CP actions CSV")
-        repo.git_push()
-        st.success(f"CSV successfully pushed to Hugging Face repository: {repo_name}")
-        logging.info(f"[Hugging Face] Successfully pushed CSV to repository '{repo_name}'.")
-    except Exception as ex:
-        st.error(f"Error saving to repository: {ex}")
-        logging.error(f"[Hugging Face] Error during push: {ex}")
-
-# -----------------------------------
-# NEW: Process Keyframes Function
-# -----------------------------------
-def process_and_save_rows():
-    """
-    Processes recorded actions, identifies keyframes, and writes rows to the CSV.
-    """
-    all_rows = []
-
-    if st.session_state['actions']:
-        # Iterate over each action
-        st.write("Current actions in session state:", st.session_state['actions'])
-        for action, all_frames in st.session_state['actions'].items():
-            if all_frames and len(all_frames) > 1:
-                flat_landmarks_per_frame = []
-
-                for f in all_frames:
-                    (
-                        pose_data,
-                        left_hand_data,
-                        left_hand_angles_data,
-                        right_hand_data,
-                        right_hand_angles_data,
-                        face_data
-                    ) = f
-
-                    flattened = flatten_landmarks(
-                        pose_data,
-                        left_hand_data,
-                        left_hand_angles_data,
-                        right_hand_data,
-                        right_hand_angles_data,
-                        face_data
-                    )
-                    flat_landmarks_per_frame.append(flattened)
-
-                flat_landmarks_per_frame = np.array(flat_landmarks_per_frame)
-
-                # Identify keyframes
-                st.write(f"Flattening and identifying keyframes for action '{action}'...")  # DEBUG
-                keyframes = identify_keyframes(
-                    flat_landmarks_per_frame,
-                    velocity_threshold=0.01,  # Lowered threshold for debugging
-                    acceleration_threshold=0.01,
-                )
-                st.write(f"Detected {len(keyframes)} keyframes for action '{action}'")  # DEBUG
-                
-                # Append rows for each keyframe
-                for kf in keyframes:
-                    if kf < len(all_frames):
-                        st.session_state['sequence_id'] += 1
-                        (
-                            pose_data,
-                            left_hand_data,
-                            left_hand_angles_data,
-                            right_hand_data,
-                            right_hand_angles_data,
-                            face_data
-                        ) = all_frames[kf]
-
-                        row_data = flatten_landmarks(
-                            pose_data,
-                            left_hand_data,
-                            left_hand_angles_data,
-                            right_hand_data,
-                            right_hand_angles_data,
-                            face_data
-                        )
-                        row = [action, st.session_state['sequence_id']] + row_data
-                        all_rows.append(row)
-
-        # Write rows to the CSV new version
-        if all_rows:
-            try:
-                with open(csv_file, mode='a', newline='') as f:
-                    csv_writer = csv.writer(f)
-                    csv_writer.writerows(all_rows)
-                st.success(f"All recorded actions appended to '{csv_file}'")
-
-                # DEBUG: Check file contents
-                st.write("Verifying written rows...")
-                with open(csv_file, 'r') as f:
-                    st.text(f.read())
-
-            except Exception as e:
-                st.error(f"Error writing to CSV: {e}")
-        else:
-            st.warning("No rows to write to CSV")
+if "csv_initialized" not in st.session_state:
+    st.session_state["csv_initialized"] = initialize_csv(csv_file, header)
 
 # -----------------------------------
 # Streamlit UI and Logic
@@ -532,6 +421,8 @@ if 'action_confirmed' not in st.session_state:
     st.session_state['action_confirmed'] = False
 if 'active_streamer_key' not in st.session_state:
     st.session_state['active_streamer_key'] = None
+if 'landmark_queue_snapshot' not in st.session_state:
+    st.session_state['landmark_queue_snapshot'] = []
 
 left_col, right_col = st.columns([1, 2])
 FRAME_WINDOW = right_col.image([])
@@ -559,8 +450,7 @@ with left_col:
                 del st.session_state[old_key]
 
         # Prepare for a new action
-        st.session_state['current_action'] = action_word
-        st.session_state['actions'][action_word] = []
+        st.session_state['actions'][action_word] = None
         st.session_state['action_confirmed'] = True
         st.session_state['active_streamer_key'] = f"record-actions-{sanitized_action_word}"
         st.success(f"Action '{action_word}' confirmed!")
@@ -580,156 +470,87 @@ with left_col:
             async_processing=True,
         )
 
-# Streamlit Button to Process Frames
-if st.button("Process Frames"):
-    logging.debug("process frames from st.button process frames")
-    queue_size = frame_queue.qsize()  # <--- Use the GLOBAL queue
-    logging.debug(f"Number of rows in frame_queue: {queue_size}")
-    st.write(f"Number of rows in frame_queue: {queue_size}")
+        # **🔹 New: Add "Stop Recording" Button**
+        if st.button("Stop Recording"):
+            # 1) Snapshot the queue
+            st.session_state["landmark_queue_snapshot"] = list(landmark_queue)
+            logging.info(f"🟡 Snapshot taken with {len(st.session_state['landmark_queue_snapshot'])} frames.")
 
-    while not frame_queue.empty():  # <--- Use the GLOBAL queue
-        frame_data = frame_queue.get()
+            # 2) Force the WebRTC session to end by deleting the streamer key
+            if streamer_key in st.session_state:
+                del st.session_state[streamer_key]
+                st.session_state['action_confirmed'] = False
+                st.session_state['active_streamer_key'] = None
+                st.success("Recording stopped. You can now save keyframes.")
 
-        if st.session_state.get("action_confirmed") and st.session_state.get("current_action"):
-            action_word = st.session_state["current_action"]
-            if action_word not in st.session_state["actions"]:
-                st.session_state["actions"][action_word] = []
+# Debugging to check if queue has data
+if st.button("Check Queue Before Saving"):
+    landmark_data = get_landmark_queue()  # Retrieve stored landmarks safely
 
-            st.session_state["actions"][action_word].append(frame_data)
-            
-            logging.debug(
-                f"[Process Frames] Appended frame_data. "
-                f"Action '{action_word}' now has "
-                f"{len(st.session_state['actions'][action_word])} frames."
+    if len(landmark_data) > 0:
+        st.write(f"✅ Landmark queue has {len(landmark_data)} frames.")
+        st.write(f"🔍 First frame (first 10 values): {list(landmark_data)[0][:10]}")
+        st.write(f"🔍 Last frame (first 10 values): {list(landmark_data)[-1][:10]}")
+    else:
+        st.warning("⚠️ Landmark queue is empty! Nothing to save.")
+
+# -----------------------------------
+# Right/Main Area: Recorded Actions
+# -----------------------------------
+with right_col:
+    if st.button("Save Keyframes to CSV"):
+        logging.info("🟡 Fetching landmarks before WebRTC disconnects...")
+
+        # **Use the stored snapshot instead of the live queue**
+        landmark_data = st.session_state.get("landmark_queue_snapshot", [])
+
+        logging.info(f"🟡 Current queue size BEFORE saving: {len(landmark_data)}")
+
+        if len(landmark_data) > 1:
+            all_rows = []
+            flat_landmarks_per_frame = np.array(landmark_data)
+
+            keyframes = identify_keyframes(
+                flat_landmarks_per_frame,
+                velocity_threshold=0.1,
+                acceleration_threshold=0.1
             )
 
+            for kf in keyframes:
+                if kf < len(flat_landmarks_per_frame):
+                    st.session_state['sequence_id'] += 1
+                    row_data = flat_landmarks_per_frame[kf]
+                    row = [st.session_state.get("action_word", "Unknown_Action"), st.session_state['sequence_id']] + row_data.tolist()
+                    all_rows.append(row)
 
+            if all_rows:
+                csv_filename = f"keyframes_{datetime.now().strftime('%Y-%m-%d_%H-%M-%S')}.csv"
+                csv_path = os.path.join("csv", csv_filename)
 
+                with open(csv_path, mode='w', newline='') as f:
+                    csv_writer = csv.writer(f)
+                    csv_writer.writerow(header)
+                    csv_writer.writerows(all_rows)
 
-# Streamlit Button to Save CSV
-if st.button("Save to CSV"):
-    logging.debug("[Save to CSV] Button clicked. Starting to process frames.")
-    
-    all_rows = []
+                st.session_state["last_saved_csv"] = csv_path
+                st.success(f"Keyframes saved to {csv_filename}")
 
-    # 1) Limit frames to a smaller batch (up to 50) for debugging
-    frame_count = min(50, frame_queue.qsize())
-    logging.debug(f"[Save to CSV] Processing up to {frame_count} frames from the queue.")
-
-    for _ in range(frame_count):
-        try:
-            # 2) Retrieve frame from the queue
-            frame_data = frame_queue.get()
-            logging.debug(f"[Save to CSV] Dequeued frame_data: {frame_data}")
-
-            # 3) Validate frame_data
-            is_valid, missing_key = validate_frame_data(frame_data)
-            if not is_valid:
-                logging.warning(f"[Save to CSV] Invalid frame_data. Missing or empty key: {missing_key}")
-                continue  # Skip this invalid frame
-
-            # 4) Log key details
-            for key, value in frame_data.items():
-                logging.debug(f"[Save to CSV] Key '{key}': Type={type(value)}, "
-                              f"Sample={str(value)[:100]}")
-
-        except Exception as e:
-            logging.error(f"[Save to CSV] Error processing frame_data: {e}")
-            continue
-
-        # 5) Append frame_data to session state for the current action
-        if st.session_state.get("action_confirmed") and st.session_state.get("current_action"):
-            action_word = st.session_state["current_action"]
-            if action_word not in st.session_state["actions"]:
-                st.session_state["actions"][action_word] = []
-            st.session_state["actions"][action_word].append(frame_data)
-
-            # NEW LOGGING: Confirm frame append success
-            logging.debug(f"[Save to CSV] Frame appended. Action '{action_word}' now has "
-                          f"{len(st.session_state['actions'][action_word])} frames.")
-
-    # 6) Flatten frames into rows for CSV
-    if "actions" in st.session_state:
-        for action, frames in st.session_state["actions"].items():
-            if frames:
-                logging.debug(f"[Save to CSV] Processing action '{action}' with {len(frames)} frames.")
-                for index, frame_data in enumerate(frames):
-                    try:
-                        # Flatten landmarks
-                        row_data = flatten_landmarks(
-                            frame_data["pose_data"],
-                            frame_data["left_hand_data"],
-                            frame_data["left_hand_angles_data"],
-                            frame_data["right_hand_data"],
-                            frame_data["right_hand_angles_data"],
-                            frame_data["face_data"]
-                        )
-                        # Add action and sequence ID
-                        st.session_state["sequence_id"] += 1
-                        row = [action, st.session_state["sequence_id"]] + row_data
-                        all_rows.append(row)
-                        logging.debug(f"[Save to CSV] Flattened row {index + 1}/{len(frames)} for action '{action}': {row[:10]}...")
-                    except Exception as e:
-                        logging.error(f"[Save to CSV] Error flattening frame {index + 1} for action '{action}': {e}")
-
-    # 7) Write rows to CSV
-    if all_rows:
-        try:
-            with open(csv_file, mode="a", newline="") as f:
-                csv_writer = csv.writer(f)
-                csv_writer.writerows(all_rows)
-            st.success(f"Saved {len(all_rows)} rows to CSV: {csv_file}")
-            logging.info(f"[Save to CSV] Successfully wrote {len(all_rows)} rows to CSV.")
-        except Exception as e:
-            st.error(f"Error writing to CSV: {e}")
-            logging.error(f"[Save to CSV] CSV write failure: {e}")
-    else:
-        st.warning("No rows to write to CSV.")
-        logging.warning("[Save to CSV] No rows were written to CSV because 'all_rows' is empty.")
-
-    # 8) Push to Hugging Face repository if rows were saved
-    if all_rows:
-        try:
-            df = pd.read_csv(csv_file)
-            if df.empty:
-                logging.warning("[Hugging Face] Local CSV is empty after writing; skipping push.")
+                clear_landmark_queue()
             else:
-                logging.debug(f"[Hugging Face] Local CSV now has {len(df.index)} rows. Attempting push to HF.")
-                save_csv_to_huggingface()
-        except Exception as e:
-            st.error(f"Error reading CSV for repository push: {e}")
-            logging.error(f"[Hugging Face] Push error: {e}")
+                st.warning("⚠️ No keyframes detected. Try again.")
+        else:
+            logging.info("🟡 Retrieved 0 frames for saving.")
+            st.warning("⚠️ Landmark queue is empty! Nothing to save.")
 
+    # Display the saved CSV preview
+    if "last_saved_csv" in st.session_state:
+        st.subheader("Saved Keyframes CSV Preview:")
+        df_display = pd.read_csv(st.session_state["last_saved_csv"])
+        st.dataframe(df_display)
 
-# -----------------------------------
-# Right/Main Area: Display Recorded CSV (if any)
-# -----------------------------------
-st.header("Recorded Actions Summary (Current CSV)")
-
-if os.path.exists(csv_file):
-    df = pd.read_csv(csv_file)
-    if not df.empty:
-        unique_actions = df['class'].unique()
-        num_actions = len(unique_actions)
-        num_cols = 8
-        num_rows = (num_actions + num_cols - 1) // num_cols
-
-        # Display each unique action in a grid
-        for r in range(num_rows):
-            row_actions = unique_actions[r * num_cols:(r + 1) * num_cols]
-            cols = st.columns(num_cols)
-            for col, a in zip(cols, row_actions):
-                if a:
-                    col.markdown(
-                        f"<h4 style='margin:10px; text-align:center; font-family:sans-serif;'>{a}</h4>",
-                        unsafe_allow_html=True
-                    )
-
-        # Display the entire CSV for reference
-        st.subheader("Full CSV Data")
-        df.reset_index(drop=True, inplace=True)  # Reset index to ensure proper display
-        st.dataframe(df)
+    st.subheader("🔍 Debugging: Landmark Queue Status")
+    if len(landmark_queue) > 0:
+        st.write(f"✅ Stored frames in queue: {len(landmark_queue)}")
+        st.write(f"🔍 Latest frame (first 10 values): {list(landmark_queue)[-1][:10]}")
     else:
-        st.info("CSV is initialized but has no data rows yet.")
-else:
-    st.info("No CSV file found yet.")
+        st.warning("⚠️ No landmarks stored yet.")
