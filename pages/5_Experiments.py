@@ -287,12 +287,12 @@ def identify_keyframes(
 # WebRTC Video Callback
 # -----------------------------------
 import streamlit as st
-from streamlit.runtime.scriptrunner import get_script_run_ctx
+from streamlit.runtime.scriptrunner import get_script_run_ctx, add_script_run_ctx
 
 def video_frame_callback(frame: av.VideoFrame) -> av.VideoFrame:
     """
-    WebRTC callback that uses MediaPipe Holistic to process frames in real-time.
-    Stores extracted landmarks in a thread-safe queue.
+    WebRTC callback that processes frames in real-time using MediaPipe.
+    Stores all frames in a thread-safe queue.
     """
     input_bgr = frame.to_ndarray(format="bgr24")
 
@@ -317,15 +317,20 @@ def video_frame_callback(frame: av.VideoFrame) -> av.VideoFrame:
         face_data
     )
 
-    # Ensure `landmark_queue` exists (thread-safe)
+    # Attach Streamlit run context to the async WebRTC thread
     ctx = get_script_run_ctx()
     if ctx:
-        with st.session_state:
-            if "landmark_queue" not in st.session_state:
-                st.session_state.landmark_queue = deque(maxlen=1000)
-            st.session_state.landmark_queue.append(row_data)  # Store data safely
+        add_script_run_ctx(ctx)  # Attach correct execution context
+
+        # Modify `st.session_state` safely
+        if "landmark_queue" not in st.session_state:
+            st.session_state.landmark_queue = deque(maxlen=1000)
+
+        st.session_state.landmark_queue.append(row_data)  # Append frame safely
 
     return av.VideoFrame.from_ndarray(annotated_image, format="bgr24")
+
+
 
 
 
@@ -422,50 +427,59 @@ with left_col:
 # -----------------------------------
 # Right/Main Area: Recorded Actions
 # -----------------------------------
-st.header("Recorded Actions")
+st.header("Save Keyframes to CSV")
 
-# Ensure there are recorded frames in the queue
-if len(st.session_state['landmark_queue']) > 1:
-    all_rows = []
+if st.button("Save Keyframes to CSV"):
+    if "landmark_queue" in st.session_state and len(st.session_state.landmark_queue) > 1:
+        all_rows = []
 
-    # Convert deque to numpy array for processing
-    flat_landmarks_per_frame = np.array(list(st.session_state['landmark_queue']))
+        # Convert deque to NumPy array for keyframe analysis
+        flat_landmarks_per_frame = np.array(list(st.session_state.landmark_queue))
 
-    # Identify keyframes
-    keyframes = identify_keyframes(
-        flat_landmarks_per_frame,
-        velocity_threshold=0.1,
-        acceleration_threshold=0.1
-    )
+        # Identify keyframes
+        keyframes = identify_keyframes(
+            flat_landmarks_per_frame,
+            velocity_threshold=0.1,
+            acceleration_threshold=0.1
+        )
 
-    # Process and save keyframes
-    for kf in keyframes:
-        if kf < len(flat_landmarks_per_frame):
-            st.session_state['sequence_id'] += 1
-            row_data = flat_landmarks_per_frame[kf]  # Get the keyframe data
-            row = [st.session_state.get("action_word", "Unknown_Action"), st.session_state['sequence_id']] + row_data.tolist()  # Add action label
-            all_rows.append(row)
+        # Extract keyframe data
+        for kf in keyframes:
+            if kf < len(flat_landmarks_per_frame):
+                st.session_state['sequence_id'] += 1
+                row_data = flat_landmarks_per_frame[kf]
+                row = [st.session_state.get("action_word", "Unknown_Action"), st.session_state['sequence_id']] + row_data.tolist()
+                all_rows.append(row)
 
-    # Skip CSV creation if no keyframes exist
-    if not all_rows:
-        st.warning("No keyframes detected. Try again.")
-    else:
-        # Save to CSV
-        csv_filename = f"keyframes_{datetime.now().strftime('%Y-%m-%d_%H-%M-%S')}.csv"
-        csv_path = os.path.join(csv_folder, csv_filename)
+        # Save only keyframes to CSV
+        if all_rows:
+            csv_filename = f"keyframes_{datetime.now().strftime('%Y-%m-%d_%H-%M-%S')}.csv"
+            csv_path = os.path.join("csv", csv_filename)
 
-        with open(csv_path, mode='w', newline='') as f:
-            csv_writer = csv.writer(f)
-            csv_writer.writerow(header)  # Use correct header
-            csv_writer.writerows(all_rows)
+            with open(csv_path, mode='w', newline='') as f:
+                csv_writer = csv.writer(f)
+                csv_writer.writerow(header)  # Use correct header
+                csv_writer.writerows(all_rows)
 
-        # Store latest saved CSV in session state
-        st.session_state["last_saved_csv"] = csv_path
-        st.success(f"Keyframe data saved to {csv_filename}")
+            st.session_state["last_saved_csv"] = csv_path
+            st.success(f"Keyframes saved to {csv_filename}")
 
-        # Display the saved CSV at the bottom of the page
-        st.subheader("Saved CSV File:")
-        df_display = pd.read_csv(csv_path)
-        st.dataframe(df_display)
+        else:
+            st.warning("No keyframes detected. Try again.")
+
+# Display the saved CSV preview
+if "last_saved_csv" in st.session_state:
+    st.subheader("Saved Keyframes CSV Preview:")
+    df_display = pd.read_csv(st.session_state["last_saved_csv"])
+    st.dataframe(df_display)
+
+st.subheader("Debugging: Landmark Queue Status")
+if "landmark_queue" in st.session_state:
+    st.write(f"Stored frames in queue: {len(st.session_state.landmark_queue)}")
+    
+    # Show the latest 10 values from the last stored frame for verification
+    if len(st.session_state.landmark_queue) > 0:
+        latest_frame = list(st.session_state.landmark_queue)[-1]
+        st.write(f"Latest frame (first 10 values): {latest_frame[:10]}")
 else:
-    st.info("No recorded actions yet.")
+    st.warning("No landmarks stored yet.")
