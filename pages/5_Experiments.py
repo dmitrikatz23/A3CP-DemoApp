@@ -17,11 +17,8 @@ import os
 from datetime import datetime
 from collections import deque
 import threading
-
-
 import sys
 sys.path.append(str(Path(__file__).resolve().parent.parent))
-
 from sample_utils.download import download_file
 from sample_utils.turn import get_ice_servers
 
@@ -40,14 +37,20 @@ logging.basicConfig(
 logger = logging.getLogger(__name__)
 logger.info("🚀 Logging is initialized!")
 
-# -----------------------------------
-# Streamlit Page Configuration
-# -----------------------------------
-st.set_page_config(layout="wide")
 
 # -----------------------------------
 # Threading problem
 # -----------------------------------
+
+# Ensure queue persists across Streamlit reruns
+if "landmark_queue" not in st.session_state:
+    st.session_state.landmark_queue = deque(maxlen=1000)
+
+# Use the stored queue in session state
+landmark_queue = st.session_state.landmark_queue
+
+# Thread-safe lock for WebRTC thread access
+lock = threading.Lock()
 
 # Thread-safe landmark queue (used instead of st.session_state)
 landmark_queue = deque(maxlen=1000)
@@ -64,17 +67,22 @@ def get_landmark_queue():
     """Thread-safe function to retrieve a copy of the landmark queue."""
     with lock:
         queue_copy = list(landmark_queue)
-    logging.info(f"🔎 Retrieved {len(queue_copy)} frames from queue")
-    return queue_copy
+    logging.info(f"🟡 Fetching landmark queue before saving...")
+    logging.info(f"🟡 Current queue size BEFORE calling get_landmark_queue(): {len(queue_copy)}")
+    return queue_copy  # Returns a copy to avoid modification issues
 
 def clear_landmark_queue():
     """Thread-safe function to clear the landmark queue."""
     with lock:
-        logging.warning(f"🟡 Clearing queue! Queue size before clearing: {len(landmark_queue)}")
-        if len(landmark_queue) == 0:
-            logging.warning("🔴 Queue is already empty before clearing.")
+        logging.info(f"🟡 Clearing queue... Current size: {len(landmark_queue)}")
         landmark_queue.clear()
     logging.info("🟡 Landmark queue cleared.")
+
+
+# -----------------------------------
+# Streamlit Page Configuration
+# -----------------------------------
+st.set_page_config(layout="wide")
 
 # -----------------------------------
 # MediaPipe Initialization & Landmark Constants
@@ -471,10 +479,18 @@ if st.button("Check Queue Before Saving"):
 # Right/Main Area: Recorded Actions
 # -----------------------------------
 if st.button("Save Keyframes to CSV"):
-    logging.info("🟡 Fetching landmark queue before saving...")
-    logging.info(f"🟡 Current queue size BEFORE calling get_landmark_queue(): {len(landmark_queue)}")
+    logging.info("🟡 Fetching landmarks before WebRTC disconnects...")
+    
+    # Fetch queue before clearing
     landmark_data = get_landmark_queue()  # Retrieve stored landmarks safely
-    logging.info(f"🟡 Retrieved {len(landmark_data)} frames for saving.")
+
+    logging.info(f"🔎 Retrieved {len(landmark_data)} frames from queue")
+
+    if len(landmark_data) > 1:
+        # Process keyframes...
+        logging.info("🟢 Processing and saving keyframes to CSV...")
+    else:
+        logging.warning("⚠️ No keyframes detected. Try again.")
 
     if len(landmark_data) > 1:
         all_rows = []
