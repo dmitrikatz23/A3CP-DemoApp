@@ -70,6 +70,7 @@ def get_landmark_queue():
 def clear_landmark_queue():
     """Thread-safe function to clear the landmark queue."""
     with lock:
+        logging.warning(f"🟡 Clearing queue! Queue size before clearing: {len(landmark_queue)}")
         landmark_queue.clear()
     logging.info("🟡 Landmark queue cleared.")  # Log clearing event
 
