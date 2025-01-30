@@ -286,14 +286,17 @@ def identify_keyframes(
 # -----------------------------------
 # WebRTC Video Callback
 # -----------------------------------
+import streamlit as st
+from streamlit.runtime.scriptrunner import get_script_run_ctx
+
 def video_frame_callback(frame: av.VideoFrame) -> av.VideoFrame:
     """
     WebRTC callback that uses MediaPipe Holistic to process frames in real-time.
-    Stores extracted landmarks in a queue.
+    Stores extracted landmarks in a thread-safe queue.
     """
     input_bgr = frame.to_ndarray(format="bgr24")
 
-    # Process frame with MediaPipe
+    # Process the frame and extract landmarks
     (
         annotated_image,
         pose_data,
@@ -304,25 +307,26 @@ def video_frame_callback(frame: av.VideoFrame) -> av.VideoFrame:
         face_data
     ) = process_frame(input_bgr)
 
-    # Verify that landmarks are detected before storing
-    if pose_data or left_hand_data or right_hand_data or face_data:
-        # Flatten landmark data
-        row_data = flatten_landmarks(
-            pose_data,
-            left_hand_data,
-            left_hand_angles,
-            right_hand_data,
-            right_hand_angles,
-            face_data
-        )
+    # Flatten landmark data
+    row_data = flatten_landmarks(
+        pose_data,
+        left_hand_data,
+        left_hand_angles,
+        right_hand_data,
+        right_hand_angles,
+        face_data
+    )
 
-        # Ensure deque is initialized
-        if "landmark_queue" not in st.session_state:
-            st.session_state.landmark_queue = deque(maxlen=1000)
-
-        st.session_state.landmark_queue.append(row_data)  # Store data
+    # Ensure `landmark_queue` exists (thread-safe)
+    ctx = get_script_run_ctx()
+    if ctx:
+        with st.session_state:
+            if "landmark_queue" not in st.session_state:
+                st.session_state.landmark_queue = deque(maxlen=1000)
+            st.session_state.landmark_queue.append(row_data)  # Store data safely
 
     return av.VideoFrame.from_ndarray(annotated_image, format="bgr24")
+
 
 
 # -----------------------------------
