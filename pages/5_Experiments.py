@@ -64,7 +64,7 @@ def get_landmark_queue():
     """Thread-safe function to retrieve a copy of the landmark queue."""
     with lock:
         queue_copy = list(landmark_queue)
-    logging.info(f"🔍 get_landmark_queue() called. Queue length: {len(queue_copy)}")
+    logging.info(f"🔎 Retrieved {len(queue_copy)} frames from queue")
     return queue_copy
 
 def clear_landmark_queue():
@@ -468,7 +468,10 @@ if st.button("Check Queue Before Saving"):
 # Right/Main Area: Recorded Actions
 # -----------------------------------
 if st.button("Save Keyframes to CSV"):
+    logging.info("🟡 Fetching landmark queue before saving...")
+    logging.info(f"🟡 Current queue size BEFORE calling get_landmark_queue(): {len(landmark_queue)}")
     landmark_data = get_landmark_queue()  # Retrieve stored landmarks safely
+    logging.info(f"🟡 Retrieved {len(landmark_data)} frames for saving.")
 
     if len(landmark_data) > 1:
         all_rows = []
