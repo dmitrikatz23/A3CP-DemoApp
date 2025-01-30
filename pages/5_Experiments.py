@@ -34,9 +34,21 @@ logger = logging.getLogger(__name__)
 # -----------------------------------
 st.set_page_config(layout="wide")
 
-#variable for storing landmarks
-if "landmark_queue" not in st.session_state:
-    st.session_state.landmark_queue = deque(maxlen=1000)
+
+# -----------------------------------
+# Threading problem
+# -----------------------------------
+
+# Persistent storage for landmark data across threads
+@st.experimental_memo
+def get_landmark_queue():
+    return deque(maxlen=1000)  # Persistent queue for storing landmarks
+
+def store_landmarks(row_data):
+    """Thread-safe method to store landmark data"""
+    queue = get_landmark_queue()
+    queue.append(row_data)  # Store data safely
+    return queue  # Return updated queue
 
 # -----------------------------------
 # MediaPipe Initialization & Landmark Constants
@@ -286,17 +298,14 @@ def identify_keyframes(
 # -----------------------------------
 # WebRTC Video Callback
 # -----------------------------------
-import streamlit as st
-from streamlit.runtime.scriptrunner import get_script_run_ctx, add_script_run_ctx
-
 def video_frame_callback(frame: av.VideoFrame) -> av.VideoFrame:
     """
     WebRTC callback that processes frames in real-time using MediaPipe.
-    Stores all frames in a thread-safe queue.
+    Stores frames in a thread-safe queue using `st.experimental_memo`.
     """
     input_bgr = frame.to_ndarray(format="bgr24")
 
-    # Process the frame and extract landmarks
+    # Process frame with MediaPipe
     (
         annotated_image,
         pose_data,
@@ -317,16 +326,8 @@ def video_frame_callback(frame: av.VideoFrame) -> av.VideoFrame:
         face_data
     )
 
-    # Attach Streamlit run context to the async WebRTC thread
-    ctx = get_script_run_ctx()
-    if ctx:
-        add_script_run_ctx(ctx)  # Attach correct execution context
-
-        # Modify `st.session_state` safely
-        if "landmark_queue" not in st.session_state:
-            st.session_state.landmark_queue = deque(maxlen=1000)
-
-        st.session_state.landmark_queue.append(row_data)  # Append frame safely
+    # Store landmarks using a thread-safe function
+    store_landmarks(row_data)
 
     return av.VideoFrame.from_ndarray(annotated_image, format="bgr24")
 
@@ -430,11 +431,13 @@ with left_col:
 st.header("Save Keyframes to CSV")
 
 if st.button("Save Keyframes to CSV"):
-    if "landmark_queue" in st.session_state and len(st.session_state.landmark_queue) > 1:
+    landmark_queue = get_landmark_queue()
+
+    if len(landmark_queue) > 1:
         all_rows = []
 
         # Convert deque to NumPy array for keyframe analysis
-        flat_landmarks_per_frame = np.array(list(st.session_state.landmark_queue))
+        flat_landmarks_per_frame = np.array(list(landmark_queue))
 
         # Identify keyframes
         keyframes = identify_keyframes(
@@ -466,6 +469,13 @@ if st.button("Save Keyframes to CSV"):
 
         else:
             st.warning("No keyframes detected. Try again.")
+
+# Display the saved CSV preview
+if "last_saved_csv" in st.session_state:
+    st.subheader("Saved Keyframes CSV Preview:")
+    df_display = pd.read_csv(st.session_state["last_saved_csv"])
+    st.dataframe(df_display)
+
 
 # Display the saved CSV preview
 if "last_saved_csv" in st.session_state:
