@@ -25,8 +25,14 @@ from sample_utils.turn import get_ice_servers
 # -----------------------------------
 # Logging Setup
 # -----------------------------------
+DEBUG_MODE = False  # Set to True only for debugging
+
+def debug_log(message):
+    if DEBUG_MODE:
+        logging.info(message)
+
 logging.basicConfig(
-    level=logging.DEBUG,  # Change to logging.INFO if too verbose
+    level=logging.DEBUG,  
     format="%(asctime)s [%(levelname)s] %(message)s",
     handlers=[
         logging.StreamHandler(),  # Print to console
@@ -71,8 +77,8 @@ def store_landmarks(row_data):
     with lock:  # Ensures only one thread writes at a time
         landmark_queue.append(row_data)
     
-    logging.info(f"Stored {len(landmark_queue)} frames in queue")  # Debugging
-    logging.info(f"First 5 values: {row_data[:5]}")  # Debug first few values
+    debug_log(f"Stored {len(landmark_queue)} frames in queue")  # Debugging
+    debug_log(f"First 5 values: {row_data[:5]}")  # Debug first few values
 
 
 def get_landmark_queue():
@@ -82,7 +88,7 @@ def get_landmark_queue():
 
     # Store snapshot for session persistence
     st.session_state.landmark_queue_snapshot = queue_snapshot
-    logging.info(f"🟡 Snapshot taken with {len(queue_snapshot)} frames.")
+    debug_log(f"🟡 Snapshot taken with {len(queue_snapshot)} frames.")
 
     return queue_snapshot  # Return the copied queue
 
@@ -90,9 +96,9 @@ def get_landmark_queue():
 def clear_landmark_queue():
     """Thread-safe function to clear the landmark queue."""
     with lock:
-        logging.info(f"🟡 Clearing queue... Current size: {len(landmark_queue)}")
+        debug_log(f"🟡 Clearing queue... Current size: {len(landmark_queue)}")
         landmark_queue.clear()
-    logging.info("🟡 Landmark queue cleared.")
+    debug_log("🟡 Landmark queue cleared.")
 
 
 # -----------------------------------
@@ -350,7 +356,7 @@ def identify_keyframes(
 # -----------------------------------
 def video_frame_callback(frame: av.VideoFrame) -> av.VideoFrame:
     input_bgr = frame.to_ndarray(format="bgr24")
-    logging.info("📷 video_frame_callback triggered")  # Debugging
+    debug_log("📷 video_frame_callback triggered")  # Debugging
 
     # Process frame with MediaPipe
     (
@@ -364,9 +370,9 @@ def video_frame_callback(frame: av.VideoFrame) -> av.VideoFrame:
     ) = process_frame(input_bgr)
 
     if pose_data or left_hand_data or right_hand_data or face_data:
-        logging.info("🟢 Landmarks detected, processing...")
+        debug_log("🟢 Landmarks detected, processing...")
     else:
-        logging.warning("⚠️ No landmarks detected, skipping storage.")
+        debug_log("⚠️ No landmarks detected, skipping storage.")
 
     # Flatten and store landmarks
     row_data = flatten_landmarks(
@@ -379,10 +385,10 @@ def video_frame_callback(frame: av.VideoFrame) -> av.VideoFrame:
     )
 
     if row_data and any(row_data):  # Ensure data is not empty
-        logging.info("Storing landmarks in queue...")
+        debug_log("Storing landmarks in queue...")
         store_landmarks(row_data)
     else:
-        logging.warning("⚠️ No valid landmarks detected. Skipping storage.")
+        debug_log("⚠️ No valid landmarks detected. Skipping storage.")
 
     return av.VideoFrame.from_ndarray(annotated_image, format="bgr24")
 
@@ -406,7 +412,7 @@ if "csv_initialized" not in st.session_state:
         with open(master_csv_file, mode='w', newline='') as f:
             csv_writer = csv.writer(f)
             csv_writer.writerow(header)
-        logging.info(f"🟡 Master CSV '{master_csv_file}' initialized with header.")
+        debug_log(f"🟡 Master CSV '{master_csv_file}' initialized with header.")
     st.session_state["csv_initialized"] = True
 
 # -----------------------------------
@@ -487,12 +493,12 @@ with left_col:
                 st.session_state['streamer_running'] = False
                 # Snapshot the queue
                 st.session_state["landmark_queue_snapshot"] = list(landmark_queue)
-                logging.info(f"🟡 Snapshot taken with {len(st.session_state['landmark_queue_snapshot'])} frames.")
+                debug_log(f"🟡 Snapshot taken with {len(st.session_state['landmark_queue_snapshot'])} frames.")
                 st.success("Streaming has stopped. You can now save keyframes.")
 
 
     if st.button("Save Keyframes to CSV"):
-        logging.info("🟡 Fetching landmarks before saving...")
+        debug_log("🟡 Fetching landmarks before saving...")
 
         # Retrieve snapshot or fall back to the queue
         if "landmark_queue_snapshot" in st.session_state and st.session_state["landmark_queue_snapshot"]:
@@ -500,7 +506,7 @@ with left_col:
         else:
             landmark_data = get_landmark_queue()  # Ensure we fetch it
 
-        logging.info(f"🟡 Current queue size BEFORE saving: {len(landmark_data)}")
+        debug_log(f"🟡 Current queue size BEFORE saving: {len(landmark_data)}")
 
         if len(landmark_data) > 1:
             all_rows = []
@@ -541,7 +547,7 @@ with left_col:
             else:
                 st.warning("⚠️ No keyframes detected. Try again.")
         else:
-            logging.info("🟡 Retrieved 0 frames for saving.")
+            debug_log("🟡 Retrieved 0 frames for saving.")
             st.warning("⚠️ Landmark queue is empty! Nothing to save.")
 
     # Display the saved CSV preview
