@@ -44,8 +44,6 @@ logger.info("🚀 Logging is initialized!")
 # Streamlit Page Configuration
 # -----------------------------------
 st.set_page_config(layout="wide")
-logging.info("page config")
-
 
 # -----------------------------------
 # Threading problem
@@ -450,6 +448,19 @@ with left_col:
             video_frame_callback=video_frame_callback,
             async_processing=True,
         )
+
+# debugging to check if queue
+
+if st.button("Check Queue Before Saving"):
+    landmark_data = get_landmark_queue()  # Retrieve stored landmarks safely
+
+    if len(landmark_data) > 0:
+        st.write(f"✅ Landmark queue has {len(landmark_data)} frames.")
+        st.write(f"🔍 First frame (first 10 values): {list(landmark_data)[0][:10]}")
+        st.write(f"🔍 Last frame (first 10 values): {list(landmark_data)[-1][:10]}")
+    else:
+        st.warning("⚠️ Landmark queue is empty! Nothing to save.")
+
 
 # -----------------------------------
 # Right/Main Area: Recorded Actions
