@@ -367,9 +367,6 @@ def video_frame_callback(frame: av.VideoFrame) -> av.VideoFrame:
         store_landmarks(row_data)
     else:
         logging.warning("⚠️ No valid landmarks detected. Skipping storage.")
-    
-    st.session_state.landmark_queue_snapshot = list(landmark_queue)
-    logging.info(f"🟡 Snapshot saved with {len(st.session_state.landmark_queue_snapshot)} frames.")
 
     return av.VideoFrame.from_ndarray(annotated_image, format="bgr24")
 
