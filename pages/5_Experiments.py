@@ -39,16 +39,15 @@ st.set_page_config(layout="wide")
 # Threading problem
 # -----------------------------------
 
-# Use st.cache_data to persist landmarks across threads
-@st.cache_data
-def get_landmark_queue():
-    return deque(maxlen=1000)  # Persistent queue for storing landmarks
+# Thread-safe landmark queue (used instead of st.session_state)
+landmark_queue = deque(maxlen=1000)
+lock = threading.Lock()  # Thread-safe lock for WebRTC thread access
 
 def store_landmarks(row_data):
     """Thread-safe function to store landmark data."""
-    queue = get_landmark_queue()
-    queue.append(row_data)  # Store landmark data safely
-    return queue  # Return updated queue
+    with lock:  # Ensures only one thread writes at a time
+        landmark_queue.append(row_data)
+    logging.info(f"Stored {len(landmark_queue)} frames in queue")  #debugging
 
 # -----------------------------------
 # MediaPipe Initialization & Landmark Constants
@@ -300,8 +299,7 @@ def identify_keyframes(
 # -----------------------------------
 def video_frame_callback(frame: av.VideoFrame) -> av.VideoFrame:
     """
-    WebRTC callback that processes frames in real-time using MediaPipe.
-    Stores frames in a thread-safe queue using `st.experimental_memo`.
+    WebRTC callback to process frames using MediaPipe and store landmark data in a thread-safe queue.
     """
     input_bgr = frame.to_ndarray(format="bgr24")
 
@@ -316,7 +314,7 @@ def video_frame_callback(frame: av.VideoFrame) -> av.VideoFrame:
         face_data
     ) = process_frame(input_bgr)
 
-    # Flatten landmark data
+    # Flatten and store landmarks
     row_data = flatten_landmarks(
         pose_data,
         left_hand_data,
@@ -326,12 +324,9 @@ def video_frame_callback(frame: av.VideoFrame) -> av.VideoFrame:
         face_data
     )
 
-    # Store landmarks using a thread-safe function
-    store_landmarks(row_data)
+    store_landmarks(row_data)  # Store in global thread-safe queue
 
     return av.VideoFrame.from_ndarray(annotated_image, format="bgr24")
-
-
 
 
 
