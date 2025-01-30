@@ -62,8 +62,10 @@ def store_landmarks(row_data):
 
 def get_landmark_queue():
     """Thread-safe function to retrieve a copy of the landmark queue."""
-    with lock:  # Ensures safe access to the queue
-        return list(landmark_queue)  # Returns a copy to avoid modification issues
+    with lock:
+        queue_copy = list(landmark_queue)
+    logging.info(f"🔍 get_landmark_queue() called. Queue length: {len(queue_copy)}")
+    return queue_copy
 
 def clear_landmark_queue():
     """Thread-safe function to clear the landmark queue."""
@@ -449,7 +451,7 @@ with left_col:
             async_processing=True,
         )
 
-# debugging to check if queue
+# debugging to check if queue has data
 
 if st.button("Check Queue Before Saving"):
     landmark_data = get_landmark_queue()  # Retrieve stored landmarks safely
