@@ -74,7 +74,7 @@ def clear_landmark_queue():
         if len(landmark_queue) == 0:
             logging.warning("🔴 Queue is already empty before clearing.")
         landmark_queue.clear()
-    logging.info("🟡 Landmark queue cleared.")  # Log clearing event
+    logging.info("🟡 Landmark queue cleared.")
 
 # -----------------------------------
 # MediaPipe Initialization & Landmark Constants
