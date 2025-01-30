@@ -490,10 +490,7 @@ with left_col:
                 logging.info(f"🟡 Snapshot taken with {len(st.session_state['landmark_queue_snapshot'])} frames.")
                 st.success("Streaming has stopped. You can now save keyframes.")
 
-# -----------------------------------
-# Right/Main Area: Recorded Actions
-# -----------------------------------
-with right_col:
+with left_col:
     if st.button("Save Keyframes to CSV"):
         logging.info("🟡 Fetching landmarks before saving...")
 
@@ -553,10 +550,4 @@ with right_col:
         df_display = pd.read_csv(st.session_state["last_saved_csv"])
         st.dataframe(df_display)
 
-    st.subheader("🔍 Debugging: Landmark Queue Status")
-    if len(landmark_queue) > 0:
-        st.write(f"✅ Stored frames in queue: {len(landmark_queue)}")
-        st.write(f"🔍 Latest frame (first 10 values): {list(landmark_queue)[-1][:10]}")
-    else:
-        st.warning("⚠️ No landmarks stored yet.")
 
