@@ -1,4 +1,4 @@
-#This version is a copy of page 1
+#This version saves the file!
 
 import logging
 from pathlib import Path
@@ -526,7 +526,6 @@ if st.button("Save Keyframes to CSV"):
 
 
 
-
 # Display the saved CSV preview
 if "last_saved_csv" in st.session_state:
     st.subheader("Saved Keyframes CSV Preview:")
@@ -534,10 +533,3 @@ if "last_saved_csv" in st.session_state:
     st.dataframe(df_display)
 
 
-
-st.subheader("🔍 Debugging: Landmark Queue Status")
-if len(landmark_queue) > 0:
-    st.write(f"✅ Stored frames in queue: {len(landmark_queue)}")
-    st.write(f"🔍 Latest frame (first 10 values): {list(landmark_queue)[-1][:10]}")
-else:
-    st.warning("⚠️ No landmarks stored yet.")
