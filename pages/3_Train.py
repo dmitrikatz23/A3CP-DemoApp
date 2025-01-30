@@ -1,5 +1,4 @@
-# This version is a corrected copy of 5_Experiments with working deque to see if it fixes some identified issues
-
+#This version saves the file!
 
 import logging
 from pathlib import Path
@@ -51,20 +50,13 @@ if "landmark_queue" not in st.session_state:
 landmark_queue = st.session_state.landmark_queue
 
 # Thread-safe lock for WebRTC thread access
-if "lock" not in st.session_state:
-    st.session_state.lock = threading.Lock()
-
-lock = st.session_state.lock
-
-# Initialize landmark_queue_snapshot
-if 'landmark_queue_snapshot' not in st.session_state:
-    st.session_state['landmark_queue_snapshot'] = []
+lock = threading.Lock()
 
 def store_landmarks(row_data):
     with lock:  # Ensures only one thread writes at a time
         landmark_queue.append(row_data)
     
-    logging.info(f"Stored {len(landmark_queue)} frames in queue")  # Debugging
+    logging.info(f"Stored {len(landmark_queue)} frames in queue")  #debugging
     logging.info(f"First 5 values: {row_data[:5]}")  # Debug first few values
 
 def get_landmark_queue():
@@ -378,6 +370,7 @@ def video_frame_callback(frame: av.VideoFrame) -> av.VideoFrame:
     return av.VideoFrame.from_ndarray(annotated_image, format="bgr24")
 
 
+
 # -----------------------------------
 # CSV Setup
 # -----------------------------------
@@ -421,8 +414,6 @@ if 'action_confirmed' not in st.session_state:
     st.session_state['action_confirmed'] = False
 if 'active_streamer_key' not in st.session_state:
     st.session_state['active_streamer_key'] = None
-if 'landmark_queue_snapshot' not in st.session_state:
-    st.session_state['landmark_queue_snapshot'] = []
 
 left_col, right_col = st.columns([1, 2])
 FRAME_WINDOW = right_col.image([])
@@ -470,20 +461,8 @@ with left_col:
             async_processing=True,
         )
 
-        # **🔹 New: Add "Stop Recording" Button**
-        if st.button("Stop Recording"):
-            # 1) Snapshot the queue
-            st.session_state["landmark_queue_snapshot"] = list(landmark_queue)
-            logging.info(f"🟡 Snapshot taken with {len(st.session_state['landmark_queue_snapshot'])} frames.")
+# debugging to check if queue has data
 
-            # 2) Force the WebRTC session to end by deleting the streamer key
-            if streamer_key in st.session_state:
-                del st.session_state[streamer_key]
-                st.session_state['action_confirmed'] = False
-                st.session_state['active_streamer_key'] = None
-                st.success("Recording stopped. You can now save keyframes.")
-
-# Debugging to check if queue has data
 if st.button("Check Queue Before Saving"):
     landmark_data = get_landmark_queue()  # Retrieve stored landmarks safely
 
@@ -494,63 +473,63 @@ if st.button("Check Queue Before Saving"):
     else:
         st.warning("⚠️ Landmark queue is empty! Nothing to save.")
 
+
 # -----------------------------------
 # Right/Main Area: Recorded Actions
 # -----------------------------------
-with right_col:
-    if st.button("Save Keyframes to CSV"):
-        logging.info("🟡 Fetching landmarks before WebRTC disconnects...")
+if st.button("Save Keyframes to CSV"):
+    logging.info("🟡 Fetching landmarks before WebRTC disconnects...")
 
-        # **Use the stored snapshot instead of the live queue**
-        landmark_data = st.session_state.get("landmark_queue_snapshot", [])
-
-        logging.info(f"🟡 Current queue size BEFORE saving: {len(landmark_data)}")
-
-        if len(landmark_data) > 1:
-            all_rows = []
-            flat_landmarks_per_frame = np.array(landmark_data)
-
-            keyframes = identify_keyframes(
-                flat_landmarks_per_frame,
-                velocity_threshold=0.1,
-                acceleration_threshold=0.1
-            )
-
-            for kf in keyframes:
-                if kf < len(flat_landmarks_per_frame):
-                    st.session_state['sequence_id'] += 1
-                    row_data = flat_landmarks_per_frame[kf]
-                    row = [st.session_state.get("action_word", "Unknown_Action"), st.session_state['sequence_id']] + row_data.tolist()
-                    all_rows.append(row)
-
-            if all_rows:
-                csv_filename = f"keyframes_{datetime.now().strftime('%Y-%m-%d_%H-%M-%S')}.csv"
-                csv_path = os.path.join("csv", csv_filename)
-
-                with open(csv_path, mode='w', newline='') as f:
-                    csv_writer = csv.writer(f)
-                    csv_writer.writerow(header)
-                    csv_writer.writerows(all_rows)
-
-                st.session_state["last_saved_csv"] = csv_path
-                st.success(f"Keyframes saved to {csv_filename}")
-
-                clear_landmark_queue()
-            else:
-                st.warning("⚠️ No keyframes detected. Try again.")
-        else:
-            logging.info("🟡 Retrieved 0 frames for saving.")
-            st.warning("⚠️ Landmark queue is empty! Nothing to save.")
-
-    # Display the saved CSV preview
-    if "last_saved_csv" in st.session_state:
-        st.subheader("Saved Keyframes CSV Preview:")
-        df_display = pd.read_csv(st.session_state["last_saved_csv"])
-        st.dataframe(df_display)
-
-    st.subheader("🔍 Debugging: Landmark Queue Status")
-    if len(landmark_queue) > 0:
-        st.write(f"✅ Stored frames in queue: {len(landmark_queue)}")
-        st.write(f"🔍 Latest frame (first 10 values): {list(landmark_queue)[-1][:10]}")
+    # Retrieve snapshot or fall back to the queue
+    if "landmark_queue_snapshot" in st.session_state:
+        landmark_data = st.session_state.landmark_queue_snapshot
     else:
-        st.warning("⚠️ No landmarks stored yet.")
+        landmark_data = get_landmark_queue()  # Ensure we fetch it
+
+    logging.info(f"🟡 Current queue size BEFORE saving: {len(landmark_data)}")
+
+    if len(landmark_data) > 1:
+        all_rows = []
+        flat_landmarks_per_frame = np.array(landmark_data)
+
+        keyframes = identify_keyframes(
+            flat_landmarks_per_frame,
+            velocity_threshold=0.1,
+            acceleration_threshold=0.1
+        )
+
+        for kf in keyframes:
+            if kf < len(flat_landmarks_per_frame):
+                st.session_state['sequence_id'] += 1
+                row_data = flat_landmarks_per_frame[kf]
+                row = [st.session_state.get("action_word", "Unknown_Action"), st.session_state['sequence_id']] + row_data.tolist()
+                all_rows.append(row)
+
+        if all_rows:
+            csv_filename = f"keyframes_{datetime.now().strftime('%Y-%m-%d_%H-%M-%S')}.csv"
+            csv_path = os.path.join("csv", csv_filename)
+
+            with open(csv_path, mode='w', newline='') as f:
+                csv_writer = csv.writer(f)
+                csv_writer.writerow(header)
+                csv_writer.writerows(all_rows)
+
+            st.session_state["last_saved_csv"] = csv_path
+            st.success(f"Keyframes saved to {csv_filename}")
+
+            clear_landmark_queue()
+        else:
+            st.warning("⚠️ No keyframes detected. Try again.")
+    else:
+        logging.info("🟡 Retrieved 0 frames for saving.")
+        st.warning("⚠️ Landmark queue is empty! Nothing to save.")
+
+
+
+# Display the saved CSV preview
+if "last_saved_csv" in st.session_state:
+    st.subheader("Saved Keyframes CSV Preview:")
+    df_display = pd.read_csv(st.session_state["last_saved_csv"])
+    st.dataframe(df_display)
+
+

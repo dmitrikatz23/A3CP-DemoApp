@@ -1,4 +1,4 @@
-#This version saves the file!
+#This version seeks to correct minor errors
 
 import logging
 from pathlib import Path
@@ -50,7 +50,16 @@ if "landmark_queue" not in st.session_state:
 landmark_queue = st.session_state.landmark_queue
 
 # Thread-safe lock for WebRTC thread access
-lock = threading.Lock()
+if "lock" not in st.session_state:
+    st.session_state.lock = threading.Lock()
+    
+lock = st.session_state.lock
+
+
+# Initialize landmark_queue_snapshot added
+if 'landmark_queue_snapshot' not in st.session_state:
+    st.session_state['landmark_queue_snapshot'] = []
+
 
 def store_landmarks(row_data):
     with lock:  # Ensures only one thread writes at a time
