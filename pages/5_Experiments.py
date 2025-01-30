@@ -289,31 +289,18 @@ def identify_keyframes(
 def video_frame_callback(frame: av.VideoFrame) -> av.VideoFrame:
     """
     WebRTC callback that uses MediaPipe Holistic to process frames in real-time.
-    Stores extracted landmarks in a queue.
+    Returns an annotated frame.
     """
     input_bgr = frame.to_ndarray(format="bgr24")
     (
         annotated_image,
-        pose_data,
-        left_hand_data,
-        left_hand_angles,
-        right_hand_data,
-        right_hand_angles,
-        face_data
+        _pose_data,
+        _left_hand_data,
+        _left_hand_angles,
+        _right_hand_data,
+        _right_hand_angles,
+        _face_data
     ) = process_frame(input_bgr)
-
-    # Flatten and store in queue
-    row_data = flatten_landmarks(
-        pose_data,
-        left_hand_data,
-        left_hand_angles,
-        right_hand_data,
-        right_hand_angles,
-        face_data
-    )
-
-    # Append row to queue (auto-removes old entries if >1000)
-    st.session_state.landmark_queue.append(row_data)
 
     return av.VideoFrame.from_ndarray(annotated_image, format="bgr24")
 
