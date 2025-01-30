@@ -439,115 +439,115 @@ file_exists = os.path.isfile(master_csv_file)
 # -----------------------------------
 # Left Column: Controls
 # -----------------------------------
-with left_col:
-    st.header("Controls")
-    action_word = st.text_input("Enter the intended meaning for the action e.g. I'm hungry")
 
-    # Confirm Action button
-    if st.button("Confirm Action") and action_word:
-        # Sanitize action word for internal use
-        sanitized_action_word = re.sub(r'[^a-zA-Z0-9_]', '_', action_word.strip())
 
-        # If an active streamer already exists, clear its state
-        if st.session_state.get('active_streamer_key') is not None:
-            st.session_state['action_confirmed'] = False
-            old_key = st.session_state['active_streamer_key']
-            if old_key in st.session_state:
-                del st.session_state[old_key]
+action_word = st.text_input("Enter the intended meaning for the action e.g. I'm hungry")
 
-        # Prepare for a new action
-        st.session_state['actions'][action_word] = None
-        st.session_state['action_confirmed'] = True
-        st.session_state['active_streamer_key'] = f"record-actions-{sanitized_action_word}"
-        st.session_state['action_word'] = action_word  # Store the action word in session state
+# Confirm Action button
+if st.button("Confirm Action") and action_word:
+    # Sanitize action word for internal use
+    sanitized_action_word = re.sub(r'[^a-zA-Z0-9_]', '_', action_word.strip())
 
-        st.success(f"Action '{action_word}' confirmed!")
+    # If an active streamer already exists, clear its state
+    if st.session_state.get('active_streamer_key') is not None:
+        st.session_state['action_confirmed'] = False
+        old_key = st.session_state['active_streamer_key']
+        if old_key in st.session_state:
+            del st.session_state[old_key]
 
-    # If an action has been confirmed, show the WebRTC streamer
-    if st.session_state.get('action_confirmed', False):
-        streamer_key = st.session_state['active_streamer_key']
-        st.info(f"Streaming activated! Perform the action: {action_word}")
+    # Prepare for a new action
+    st.session_state['actions'][action_word] = None
+    st.session_state['action_confirmed'] = True
+    st.session_state['active_streamer_key'] = f"record-actions-{sanitized_action_word}"
+    st.session_state['action_word'] = action_word  # Store the action word in session state
 
-        # Launch Streamlit WebRTC streamer and assign it to a variable
-        webrtc_ctx = webrtc_streamer(
-            key=streamer_key,
-            mode=WebRtcMode.SENDRECV,
-            rtc_configuration={"iceServers": get_ice_servers(), "iceTransportPolicy": "relay"},
-            media_stream_constraints={"video": True, "audio": False},
-            video_frame_callback=video_frame_callback,
-            async_processing=True,
+    st.success(f"Action '{action_word}' confirmed!")
+
+# If an action has been confirmed, show the WebRTC streamer
+if st.session_state.get('action_confirmed', False):
+    streamer_key = st.session_state['active_streamer_key']
+    st.info(f"Streaming activated! Perform the action: {action_word}")
+
+    # Launch Streamlit WebRTC streamer and assign it to a variable
+    webrtc_ctx = webrtc_streamer(
+        key=streamer_key,
+        mode=WebRtcMode.SENDRECV,
+        rtc_configuration={"iceServers": get_ice_servers(), "iceTransportPolicy": "relay"},
+        media_stream_constraints={"video": True, "audio": False},
+        video_frame_callback=video_frame_callback,
+        async_processing=True,
+    )
+
+    # Update streamer_running flag based on streamer state
+    if webrtc_ctx.state.playing:
+        st.session_state['streamer_running'] = True
+    else:
+        if st.session_state['streamer_running']:
+            # Streamer has just stopped
+            st.session_state['streamer_running'] = False
+            # Snapshot the queue
+            st.session_state["landmark_queue_snapshot"] = list(landmark_queue)
+            logging.info(f"🟡 Snapshot taken with {len(st.session_state['landmark_queue_snapshot'])} frames.")
+            st.success("Streaming has stopped. You can now save keyframes.")
+
+
+if st.button("Save Keyframes to CSV"):
+    logging.info("🟡 Fetching landmarks before saving...")
+
+    # Retrieve snapshot or fall back to the queue
+    if "landmark_queue_snapshot" in st.session_state and st.session_state["landmark_queue_snapshot"]:
+        landmark_data = st.session_state.landmark_queue_snapshot
+    else:
+        landmark_data = get_landmark_queue()  # Ensure we fetch it
+
+    logging.info(f"🟡 Current queue size BEFORE saving: {len(landmark_data)}")
+
+    if len(landmark_data) > 1:
+        all_rows = []
+        flat_landmarks_per_frame = np.array(landmark_data)
+
+        keyframes = identify_keyframes(
+            flat_landmarks_per_frame,
+            velocity_threshold=0.1,
+            acceleration_threshold=0.1
         )
 
-        # Update streamer_running flag based on streamer state
-        if webrtc_ctx.state.playing:
-            st.session_state['streamer_running'] = True
-        else:
-            if st.session_state['streamer_running']:
-                # Streamer has just stopped
-                st.session_state['streamer_running'] = False
-                # Snapshot the queue
-                st.session_state["landmark_queue_snapshot"] = list(landmark_queue)
-                logging.info(f"🟡 Snapshot taken with {len(st.session_state['landmark_queue_snapshot'])} frames.")
-                st.success("Streaming has stopped. You can now save keyframes.")
-
-with left_col:
-    if st.button("Save Keyframes to CSV"):
-        logging.info("🟡 Fetching landmarks before saving...")
-
-        # Retrieve snapshot or fall back to the queue
-        if "landmark_queue_snapshot" in st.session_state and st.session_state["landmark_queue_snapshot"]:
-            landmark_data = st.session_state.landmark_queue_snapshot
-        else:
-            landmark_data = get_landmark_queue()  # Ensure we fetch it
-
-        logging.info(f"🟡 Current queue size BEFORE saving: {len(landmark_data)}")
-
-        if len(landmark_data) > 1:
-            all_rows = []
-            flat_landmarks_per_frame = np.array(landmark_data)
-
-            keyframes = identify_keyframes(
-                flat_landmarks_per_frame,
-                velocity_threshold=0.1,
-                acceleration_threshold=0.1
-            )
-
-            for kf in keyframes:
-                if kf < len(flat_landmarks_per_frame):
-                    st.session_state['sequence_id'] += 1
-                    row_data = flat_landmarks_per_frame[kf]
-                    
-                    # Retrieve the action word from session state
-                    action_class = st.session_state.get("action_word", "Unknown_Action")
-
-                    # Construct the row with the action word in the 'class' column
-                    row = [action_class, st.session_state['sequence_id']] + row_data.tolist()
-                    all_rows.append(row)
-
-            if all_rows:
-                # Define the master CSV file path
-                master_csv = st.session_state["master_csv_file"]
-
-                # Append new keyframes to the master CSV
-                with open(master_csv, mode='a', newline='') as f:
-                    csv_writer = csv.writer(f)
-                    csv_writer.writerows(all_rows)
-
-                st.session_state["last_saved_csv"] = master_csv
-                st.success(f"Keyframes saved to {master_csv}")
+        for kf in keyframes:
+            if kf < len(flat_landmarks_per_frame):
+                st.session_state['sequence_id'] += 1
+                row_data = flat_landmarks_per_frame[kf]
                 
-                # Optionally, clear the snapshot after saving
-                st.session_state["landmark_queue_snapshot"] = []
-            else:
-                st.warning("⚠️ No keyframes detected. Try again.")
-        else:
-            logging.info("🟡 Retrieved 0 frames for saving.")
-            st.warning("⚠️ Landmark queue is empty! Nothing to save.")
+                # Retrieve the action word from session state
+                action_class = st.session_state.get("action_word", "Unknown_Action")
 
-    # Display the saved CSV preview
-    if "last_saved_csv" in st.session_state:
-        st.subheader("Saved Keyframes CSV Preview:")
-        df_display = pd.read_csv(st.session_state["last_saved_csv"])
-        st.dataframe(df_display)
+                # Construct the row with the action word in the 'class' column
+                row = [action_class, st.session_state['sequence_id']] + row_data.tolist()
+                all_rows.append(row)
+
+        if all_rows:
+            # Define the master CSV file path
+            master_csv = st.session_state["master_csv_file"]
+
+            # Append new keyframes to the master CSV
+            with open(master_csv, mode='a', newline='') as f:
+                csv_writer = csv.writer(f)
+                csv_writer.writerows(all_rows)
+
+            st.session_state["last_saved_csv"] = master_csv
+            st.success(f"Keyframes saved to {master_csv}")
+            
+            # Optionally, clear the snapshot after saving
+            st.session_state["landmark_queue_snapshot"] = []
+        else:
+            st.warning("⚠️ No keyframes detected. Try again.")
+    else:
+        logging.info("🟡 Retrieved 0 frames for saving.")
+        st.warning("⚠️ Landmark queue is empty! Nothing to save.")
+
+# Display the saved CSV preview
+if "last_saved_csv" in st.session_state:
+    st.subheader("Saved Keyframes CSV Preview:")
+    df_display = pd.read_csv(st.session_state["last_saved_csv"])
+    st.dataframe(df_display)
 
 
