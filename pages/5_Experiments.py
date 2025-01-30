@@ -49,7 +49,7 @@ def store_landmarks(row_data):
     with lock:  # Ensures only one thread writes at a time
         landmark_queue.append(row_data)
     logging.info(f"Stored {len(landmark_queue)} frames in queue")  #debugging
-    logging.info(f"🔍 First 5 values: {row_data[:5]}")  # Debug first few values
+    logging.info(f"First 5 values: {row_data[:5]}")  # Debug first few values
 
 def get_landmark_queue():
     """Thread-safe function to retrieve a copy of the landmark queue."""
@@ -337,10 +337,11 @@ def video_frame_callback(frame: av.VideoFrame) -> av.VideoFrame:
         face_data
     )
 
-    if row_data:
-        store_landmarks(row_data)  # Store in queue
+    if row_data and any(row_data):  # Ensure data is not empty
+        logging.info("Storing landmarks in queue...")
+        store_landmarks(row_data)
     else:
-        logging.warning("⚠️ No landmarks detected, skipping storage.")
+        logging.warning("⚠️ No valid landmarks detected. Skipping storage.")
 
     return av.VideoFrame.from_ndarray(annotated_image, format="bgr24")
 
