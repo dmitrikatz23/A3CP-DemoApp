@@ -52,24 +52,12 @@ landmark_queue = st.session_state.landmark_queue
 # Thread-safe lock for WebRTC thread access
 lock = threading.Lock()
 
-# Thread-safe landmark queue (used instead of st.session_state)
-landmark_queue = deque(maxlen=1000)
-lock = threading.Lock()  # Thread-safe lock for WebRTC thread access
-
 def store_landmarks(row_data):
     with lock:  # Ensures only one thread writes at a time
         landmark_queue.append(row_data)
     
     logging.info(f"Stored {len(landmark_queue)} frames in queue")  #debugging
     logging.info(f"First 5 values: {row_data[:5]}")  # Debug first few values
-
-def get_landmark_queue():
-    """Thread-safe function to retrieve a copy of the landmark queue."""
-    with lock:
-        queue_copy = list(landmark_queue)
-    logging.info(f"🟡 Fetching landmark queue before saving...")
-    logging.info(f"🟡 Current queue size BEFORE calling get_landmark_queue(): {len(queue_copy)}")
-    return queue_copy  # Returns a copy to avoid modification issues
 
 def get_landmark_queue():
     """Thread-safe function to retrieve a copy of the landmark queue."""
