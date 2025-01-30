@@ -293,7 +293,7 @@ def video_frame_callback(frame: av.VideoFrame) -> av.VideoFrame:
     """
     input_bgr = frame.to_ndarray(format="bgr24")
 
-    # Process the frame and extract landmarks
+    # Process frame with MediaPipe
     (
         annotated_image,
         pose_data,
@@ -304,21 +304,23 @@ def video_frame_callback(frame: av.VideoFrame) -> av.VideoFrame:
         face_data
     ) = process_frame(input_bgr)
 
-    # Flatten landmark data
-    row_data = flatten_landmarks(
-        pose_data,
-        left_hand_data,
-        left_hand_angles,
-        right_hand_data,
-        right_hand_angles,
-        face_data
-    )
+    # Verify that landmarks are detected before storing
+    if pose_data or left_hand_data or right_hand_data or face_data:
+        # Flatten landmark data
+        row_data = flatten_landmarks(
+            pose_data,
+            left_hand_data,
+            left_hand_angles,
+            right_hand_data,
+            right_hand_angles,
+            face_data
+        )
 
-    # Store landmarks in deque (ensure session state exists)
-    if "landmark_queue" not in st.session_state:
-        st.session_state.landmark_queue = deque(maxlen=1000)  # Initialize if missing
+        # Ensure deque is initialized
+        if "landmark_queue" not in st.session_state:
+            st.session_state.landmark_queue = deque(maxlen=1000)
 
-    st.session_state.landmark_queue.append(row_data)  # Append to queue
+        st.session_state.landmark_queue.append(row_data)  # Store data
 
     return av.VideoFrame.from_ndarray(annotated_image, format="bgr24")
 
