@@ -68,12 +68,19 @@ with left_col:
 # -----------------------------------
 # Right Column: Visualization
 # -----------------------------------
-def animate_landmarks(data, ax):
-    """Animate landmarks in the dataset."""
+def animate_landmarks(data, save_path):
+    """Generate an animation and save as a GIF."""
     num_frames = len(data)
 
+    fig, ax = plt.subplots(figsize=(5, 5))
+    ax.set_xlim(0, 1)
+    ax.set_ylim(0, 1)
+    ax.set_xlabel("X Coordinate")
+    ax.set_ylabel("Y Coordinate")
+    ax.set_title("Gesture Landmark Animation")
+
     scatter = ax.scatter([], [], c='blue', marker='o', alpha=0.5)
-    
+
     def update(frame):
         ax.clear()
         ax.set_xlim(0, 1)
@@ -84,12 +91,14 @@ def animate_landmarks(data, ax):
 
         x_vals = data.iloc[frame][1::3]  # Extract x values (every third column starting from index 1)
         y_vals = data.iloc[frame][2::3]  # Extract y values (every third column starting from index 2)
-        
+
         ax.scatter(x_vals, y_vals, c='blue', marker='o', alpha=0.5)
 
-        return scatter,
+    ani = animation.FuncAnimation(fig, update, frames=num_frames, interval=100, blit=False)
 
-    return update, num_frames
+    # Save animation as GIF
+    ani.save(save_path, writer='pillow', fps=10)
+    plt.close(fig)  # Close figure to prevent Streamlit from rendering a static plot
 
 with right_col:
     st.header("Dataset Visualization")
@@ -102,16 +111,11 @@ with right_col:
             # Extract landmark data (skip first two columns: 'class' and 'sequence_id')
             landmark_data = df.iloc[:, 2:]
 
-            # Set up animation
-            fig, ax = plt.subplots(figsize=(5, 5))
-            ax.set_xlim(0, 1)
-            ax.set_ylim(0, 1)
-            ax.set_xlabel("X Coordinate")
-            ax.set_ylabel("Y Coordinate")
-            ax.set_title("Gesture Landmark Animation")
+            # Define GIF save path
+            gif_path = "landmark_animation.gif"
 
-            update_func, total_frames = animate_landmarks(landmark_data, ax)
-            ani = animation.FuncAnimation(fig, update_func, frames=total_frames, interval=100, blit=False)
+            # Generate and save animation
+            animate_landmarks(landmark_data, gif_path)
 
-            # Display animation in Streamlit
-            st.pyplot(fig)
+            # Display the saved GIF in Streamlit
+            st.image(gif_path)
