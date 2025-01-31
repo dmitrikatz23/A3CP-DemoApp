@@ -68,8 +68,11 @@ with left_col:
 # -----------------------------------
 # Right Column: Visualization
 # -----------------------------------
-def animate_landmarks(data, save_path):
-    """Generate an animation and save as a GIF."""
+def animate_landmarks(data, save_path, frame_skip=2):
+    """Generate an animation and save as a GIF with faster processing."""
+    
+    # Reduce the number of frames processed
+    data = data.iloc[::frame_skip, :].reset_index(drop=True)
     num_frames = len(data)
 
     fig, ax = plt.subplots(figsize=(5, 5))
@@ -78,9 +81,9 @@ def animate_landmarks(data, save_path):
     ax.set_xlabel("X Coordinate")
     ax.set_ylabel("Y Coordinate")
     ax.set_title("Gesture Landmark Animation")
+    ax.invert_yaxis()  # Flip the y-axis to match MediaPipe coordinate system
 
     scatter = ax.scatter([], [], c='blue', marker='o', alpha=0.5)
-    ax.invert_yaxis()  # Flip the y-axis to match MediaPipe coordinate system
 
     def update(frame):
         ax.clear()
@@ -91,15 +94,18 @@ def animate_landmarks(data, save_path):
         ax.set_title(f"Gesture Landmark Animation - Frame {frame+1}/{num_frames}")
         ax.invert_yaxis()  # Keep y-axis flipped
 
-        x_vals = data.iloc[frame][1::3]  # Extract x values (every third column starting from index 1)
-        y_vals = data.iloc[frame][2::3]  # Extract y values (every third column starting from index 2)
+        # Convert data to NumPy array for faster indexing
+        frame_data = data.iloc[frame].to_numpy()
+
+        x_vals = frame_data[1::3]  # Extract x values (every third column starting from index 1)
+        y_vals = frame_data[2::3]  # Extract y values (every third column starting from index 2)
 
         ax.scatter(x_vals, y_vals, c='blue', marker='o', alpha=0.5)
 
-    ani = animation.FuncAnimation(fig, update, frames=num_frames, interval=100, blit=False)
+    ani = animation.FuncAnimation(fig, update, frames=num_frames, interval=50, blit=False)
 
-    # Save animation as GIF
-    ani.save(save_path, writer='pillow', fps=10)
+    # Save animation as GIF using a faster backend (`imagemagick`)
+    ani.save(save_path, writer='imagemagick', fps=15)
     plt.close(fig)  # Close figure to prevent Streamlit from rendering a static plot
 
 # -----------------------------------
@@ -128,8 +134,8 @@ with right_col:
             # Define GIF save path
             gif_path = "landmark_animation.gif"
 
-            # Generate and save animation
-            animate_landmarks(landmark_data, gif_path)
+            # Generate and save animation (skip every 2nd frame for speed)
+            animate_landmarks(landmark_data, gif_path, frame_skip=2)
 
             # Display the saved GIF in Streamlit
             st.image(gif_path)
