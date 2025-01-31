@@ -75,11 +75,18 @@ def animate_landmarks(data, ax):
     scatter = ax.scatter([], [], c='blue', marker='o', alpha=0.5)
     
     def update(frame):
+        ax.clear()
+        ax.set_xlim(0, 1)
+        ax.set_ylim(0, 1)
+        ax.set_xlabel("X Coordinate")
+        ax.set_ylabel("Y Coordinate")
+        ax.set_title(f"Gesture Landmark Animation - Frame {frame+1}/{num_frames}")
+
         x_vals = data.iloc[frame][1::3]  # Extract x values (every third column starting from index 1)
         y_vals = data.iloc[frame][2::3]  # Extract y values (every third column starting from index 2)
         
-        scatter.set_offsets(np.c_[x_vals, y_vals])
-        ax.set_title(f"Frame {frame+1}/{num_frames}")
+        ax.scatter(x_vals, y_vals, c='blue', marker='o', alpha=0.5)
+
         return scatter,
 
     return update, num_frames
@@ -108,4 +115,3 @@ with right_col:
 
             # Display animation in Streamlit
             st.pyplot(fig)
-
