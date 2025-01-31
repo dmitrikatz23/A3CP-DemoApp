@@ -548,69 +548,69 @@ with left_col:
 
 with left_col:
     if st.button("Save Keyframes to CSV"):
-    logging.info("🟡 Fetching landmarks before WebRTC disconnects...")
+        logging.info("🟡 Fetching landmarks before WebRTC disconnects...")
 
-    # Retrieve snapshot or fall back to the queue
-    if "landmark_queue_snapshot" in st.session_state:
-        landmark_data = st.session_state.landmark_queue_snapshot
-    else:
-        landmark_data = get_landmark_queue()
-
-    logging.info(f"🟡 Current queue size BEFORE saving: {len(landmark_data)}")
-
-    if len(landmark_data) > 1:
-        all_rows = []
-        flat_landmarks_per_frame = np.array(landmark_data)
-
-        keyframes = identify_keyframes(
-            flat_landmarks_per_frame,
-            velocity_threshold=0.1,
-            acceleration_threshold=0.1
-        )
-
-        for kf in keyframes:
-            if kf < len(flat_landmarks_per_frame):
-                st.session_state['sequence_id'] += 1
-                row_data = flat_landmarks_per_frame[kf]
-                
-                # Retrieve the action word from session state
-                action_class = st.session_state.get("action_word", "Unknown_Action")
-
-                # Construct the row with the action word in the 'class' column
-                row = [action_class, st.session_state['sequence_id']] + row_data.tolist()
-                all_rows.append(row)
-
-        if all_rows:
-            csv_filename = f"keyframes_{datetime.now().strftime('%Y-%m-%d_%H-%M-%S')}.csv"
-            csv_path = os.path.join("csv", csv_filename)
-
-            # Check if the CSV exists, append if necessary
-            if os.path.exists(csv_path):
-                existing_df = pd.read_csv(csv_path)
-                new_df = pd.DataFrame(all_rows, columns=header)
-                updated_df = pd.concat([existing_df, new_df], ignore_index=True)
-                updated_df.to_csv(csv_path, index=False)
-            else:
-                with open(csv_path, mode='w', newline='') as f:
-                    csv_writer = csv.writer(f)
-                    csv_writer.writerow(header)
-                    csv_writer.writerows(all_rows)
-
-            st.session_state["last_saved_csv"] = csv_path
-            st.success(f"Keyframes saved to {csv_filename}")
-
-            # Upload the CSV to Hugging Face
-            try:
-                save_to_huggingface(csv_path)
-            except Exception as e:
-                st.error(f"Failed to save to Hugging Face repository: {e}")
-
-            clear_landmark_queue()
+        # Retrieve snapshot or fall back to the queue
+        if "landmark_queue_snapshot" in st.session_state:
+            landmark_data = st.session_state.landmark_queue_snapshot
         else:
-            st.warning("⚠️ No keyframes detected. Try again.")
-    else:
-        logging.info("🟡 Retrieved 0 frames for saving.")
-        st.warning("⚠️ Landmark queue is empty! Nothing to save.")
+            landmark_data = get_landmark_queue()
+
+        logging.info(f"🟡 Current queue size BEFORE saving: {len(landmark_data)}")
+
+        if len(landmark_data) > 1:
+            all_rows = []
+            flat_landmarks_per_frame = np.array(landmark_data)
+
+            keyframes = identify_keyframes(
+                flat_landmarks_per_frame,
+                velocity_threshold=0.1,
+                acceleration_threshold=0.1
+            )
+
+            for kf in keyframes:
+                if kf < len(flat_landmarks_per_frame):
+                    st.session_state['sequence_id'] += 1
+                    row_data = flat_landmarks_per_frame[kf]
+                    
+                    # Retrieve the action word from session state
+                    action_class = st.session_state.get("action_word", "Unknown_Action")
+
+                    # Construct the row with the action word in the 'class' column
+                    row = [action_class, st.session_state['sequence_id']] + row_data.tolist()
+                    all_rows.append(row)
+
+            if all_rows:
+                csv_filename = f"keyframes_{datetime.now().strftime('%Y-%m-%d_%H-%M-%S')}.csv"
+                csv_path = os.path.join("csv", csv_filename)
+
+                # Check if the CSV exists, append if necessary
+                if os.path.exists(csv_path):
+                    existing_df = pd.read_csv(csv_path)
+                    new_df = pd.DataFrame(all_rows, columns=header)
+                    updated_df = pd.concat([existing_df, new_df], ignore_index=True)
+                    updated_df.to_csv(csv_path, index=False)
+                else:
+                    with open(csv_path, mode='w', newline='') as f:
+                        csv_writer = csv.writer(f)
+                        csv_writer.writerow(header)
+                        csv_writer.writerows(all_rows)
+
+                st.session_state["last_saved_csv"] = csv_path
+                st.success(f"Keyframes saved to {csv_filename}")
+
+                # Upload the CSV to Hugging Face
+                try:
+                    save_to_huggingface(csv_path)
+                except Exception as e:
+                    st.error(f"Failed to save to Hugging Face repository: {e}")
+
+                clear_landmark_queue()
+            else:
+                st.warning("⚠️ No keyframes detected. Try again.")
+        else:
+            logging.info("🟡 Retrieved 0 frames for saving.")
+            st.warning("⚠️ Landmark queue is empty! Nothing to save.")
 
    
 with left_col:
