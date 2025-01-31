@@ -80,6 +80,7 @@ def animate_landmarks(data, save_path):
     ax.set_title("Gesture Landmark Animation")
 
     scatter = ax.scatter([], [], c='blue', marker='o', alpha=0.5)
+    ax.invert_yaxis()  # Flip the y-axis to match MediaPipe coordinate system
 
     def update(frame):
         ax.clear()
@@ -88,6 +89,7 @@ def animate_landmarks(data, save_path):
         ax.set_xlabel("X Coordinate")
         ax.set_ylabel("Y Coordinate")
         ax.set_title(f"Gesture Landmark Animation - Frame {frame+1}/{num_frames}")
+        ax.invert_yaxis()  # Keep y-axis flipped
 
         x_vals = data.iloc[frame][1::3]  # Extract x values (every third column starting from index 1)
         y_vals = data.iloc[frame][2::3]  # Extract y values (every third column starting from index 2)
@@ -100,10 +102,22 @@ def animate_landmarks(data, save_path):
     ani.save(save_path, writer='pillow', fps=10)
     plt.close(fig)  # Close figure to prevent Streamlit from rendering a static plot
 
+# -----------------------------------
+# Playback Controls
+# -----------------------------------
+if "playing" not in st.session_state:
+    st.session_state["playing"] = False
+
 with right_col:
     st.header("Dataset Visualization")
 
-    if st.button("Generate Animation"):
+    if st.button("Start Animation"):
+        st.session_state["playing"] = True
+
+    if st.button("Stop Animation"):
+        st.session_state["playing"] = False
+
+    if st.session_state["playing"]:
         with st.spinner("Processing dataset..."):
             # Load dataset
             df = pd.read_csv(dataset_path)
