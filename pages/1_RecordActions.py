@@ -34,11 +34,11 @@ def debug_log(message):
         logging.info(message)
 
 logging.basicConfig(
-    level=logging.DEBUG,  
+    level=logging.WARNING if not DEBUG_MODE else logging.DEBUG,  # Only show debug logs if DEBUG_MODE is True
     format="%(asctime)s [%(levelname)s] %(message)s",
     handlers=[
-        logging.StreamHandler(),  # Print to console
-        logging.FileHandler("app_debug.log", mode='w')  # Save logs to a file
+        logging.StreamHandler(),  
+        logging.FileHandler("app_debug.log", mode='w')  
     ]
 )
 
