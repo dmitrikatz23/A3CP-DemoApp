@@ -548,7 +548,6 @@ with left_col:
 
 with left_col:
     if st.button("Save Keyframes to CSV"):
-        debug_log.info("🟡 Fetching landmarks before WebRTC disconnects...")
 
         # Retrieve snapshot or fall back to the queue
         if "landmark_queue_snapshot" in st.session_state:
@@ -556,7 +555,7 @@ with left_col:
         else:
             landmark_data = get_landmark_queue()
 
-        debug_log.info(f"🟡 Current queue size BEFORE saving: {len(landmark_data)}")
+        debug_log(f"🟡 Current queue size BEFORE saving: {len(landmark_data)}")
 
         if len(landmark_data) > 1:
             all_rows = []
@@ -609,7 +608,7 @@ with left_col:
             else:
                 st.warning("⚠️ No keyframes detected. Try again.")
         else:
-            debug_log.info("🟡 Retrieved 0 frames for saving.")
+            debug_log("🟡 Retrieved 0 frames for saving.")
             st.warning("⚠️ Landmark queue is empty! Nothing to save.")
 
    
