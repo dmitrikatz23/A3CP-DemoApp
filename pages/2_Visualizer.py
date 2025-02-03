@@ -26,43 +26,42 @@ if not hf_token:
 hf_api = HfApi()
 
 # -----------------------------------
-# Fetch Dataset List from Hugging Face
-# -----------------------------------
-#@st.cache_data
-def fetch_datasets():
-    """Retrieve dataset filenames from Hugging Face repository."""
-    try:
-        files = hf_api.list_repo_files(HF_REPO_NAME, repo_type="dataset", token=hf_token)
-        csv_files = sorted([f for f in files if f.endswith(".csv")], reverse=True)
-        return csv_files
-    except Exception as e:
-        st.error(f"Failed to fetch datasets: {e}")
-        return []
-
-# Fetch dataset list
-dataset_files = fetch_datasets()
-
-# -----------------------------------
-# Left Column: Dataset Selector
+# Left Column: Dataset Selector and Loader
 # -----------------------------------
 left_col, right_col = st.columns([1, 2])
 
 with left_col:
     st.header("Available Datasets")
-    
-    if dataset_files:
-        selected_dataset = st.selectbox("Select a dataset to visualize:", dataset_files)
 
+    # Load Files button to fetch and sort files from the repository
+    if st.button("Load Files"):
+        try:
+            files = hf_api.list_repo_files(HF_REPO_NAME, repo_type="dataset", token=hf_token)
+            # Filter CSV files only and sort them in reverse (most recent first, assuming filenames include timestamps)
+            csv_files = sorted([f for f in files if f.endswith(".csv")], reverse=True)
+            st.session_state["repo_files"] = csv_files
+            st.success("Files loaded successfully!")
+        except Exception as e:
+            st.error(f"Error loading files: {e}")
+
+    # Display the loaded files in a selectbox (if available)
+    if "repo_files" in st.session_state and st.session_state["repo_files"]:
+        selected_dataset = st.selectbox("Select a dataset to visualize:", st.session_state["repo_files"])
+        
         # Download the selected dataset if it does not exist locally
         dataset_path = os.path.join(LOCAL_DATASET_DIR, selected_dataset)
         if not os.path.exists(dataset_path):
             with st.spinner(f"Downloading {selected_dataset}..."):
-                hf_api.hf_hub_download(HF_REPO_NAME, selected_dataset, local_dir=LOCAL_DATASET_DIR, repo_type="dataset", token=hf_token)
-
+                hf_api.hf_hub_download(
+                    HF_REPO_NAME,
+                    selected_dataset,
+                    local_dir=LOCAL_DATASET_DIR,
+                    repo_type="dataset",
+                    token=hf_token
+                )
         st.success(f"Selected dataset: {selected_dataset}")
-
     else:
-        st.warning("No datasets found in the repository.")
+        st.warning("No datasets loaded from repository.")
         st.stop()
 
 # -----------------------------------
@@ -70,7 +69,6 @@ with left_col:
 # -----------------------------------
 def animate_landmarks(data, save_path, frame_skip=2):
     """Generate an animation and save as a GIF with faster processing."""
-    
     # Reduce the number of frames processed
     data = data.iloc[::frame_skip, :].reset_index(drop=True)
     num_frames = len(data)
@@ -83,8 +81,6 @@ def animate_landmarks(data, save_path, frame_skip=2):
     ax.set_title("Gesture Landmark Animation")
     ax.invert_yaxis()  # Flip the y-axis to match MediaPipe coordinate system
 
-    scatter = ax.scatter([], [], c='blue', marker='o', alpha=0.5)
-
     def update(frame):
         ax.clear()
         ax.set_xlim(0, 1)
@@ -96,10 +92,8 @@ def animate_landmarks(data, save_path, frame_skip=2):
 
         # Convert data to NumPy array for faster indexing
         frame_data = data.iloc[frame].to_numpy()
-
         x_vals = frame_data[1::3]  # Extract x values (every third column starting from index 1)
         y_vals = frame_data[2::3]  # Extract y values (every third column starting from index 2)
-
         ax.scatter(x_vals, y_vals, c='blue', marker='o', alpha=0.5)
 
     ani = animation.FuncAnimation(fig, update, frames=num_frames, interval=50, blit=False)
@@ -108,9 +102,6 @@ def animate_landmarks(data, save_path, frame_skip=2):
     ani.save(save_path, writer='imagemagick', fps=15)
     plt.close(fig)  # Close figure to prevent Streamlit from rendering a static plot
 
-# -----------------------------------
-# Playback Controls
-# -----------------------------------
 if "playing" not in st.session_state:
     st.session_state["playing"] = False
 
@@ -125,17 +116,13 @@ with right_col:
 
     if st.session_state["playing"]:
         with st.spinner("Processing dataset..."):
-            # Load dataset
+            # Load dataset from the downloaded file
             df = pd.read_csv(dataset_path)
-            
             # Extract landmark data (skip first two columns: 'class' and 'sequence_id')
             landmark_data = df.iloc[:, 2:]
-
             # Define GIF save path
             gif_path = "landmark_animation.gif"
-
             # Generate and save animation (skip every 2nd frame for speed)
             animate_landmarks(landmark_data, gif_path, frame_skip=2)
-
             # Display the saved GIF in Streamlit
             st.image(gif_path)

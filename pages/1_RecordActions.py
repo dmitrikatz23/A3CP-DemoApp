@@ -583,7 +583,7 @@ with left_col:
                     all_rows.append(row)
 
             if all_rows:
-                csv_filename = f"{action_class}_{user_name}_{datetime.now().strftime('%Y-%m-%d_%H-%M-%S')}.csv"
+                csv_filename = f"{user_name}_{action_class}_{datetime.now().strftime('%Y-%m-%d_%H-%M-%S')}.csv"
                 csv_path = os.path.join("csv", csv_filename)
 
                 # Check if the CSV exists, append if necessary
