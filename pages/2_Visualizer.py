@@ -28,7 +28,7 @@ hf_api = HfApi()
 # -----------------------------------
 # Fetch Dataset List from Hugging Face
 # -----------------------------------
-@st.cache_data
+#@st.cache_data
 def fetch_datasets():
     """Retrieve dataset filenames from Hugging Face repository."""
     try:

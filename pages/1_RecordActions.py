@@ -408,11 +408,6 @@ if not hf_token:
 repo_name = "dk23/A3CP_actions"
 local_repo_path = "local_repo"
 
-#attempting to fix repo problem
-#import shutil
-#if os.path.exists(local_repo_path):
-    #shutil.rmtree(local_repo_path)  # This ensures the directory is empty
-
 
 # Configure generic Git identity
 git_user = "A3CP_bot"
@@ -501,6 +496,8 @@ file_exists = os.path.isfile(master_csv_file)
 # Left Column: Controls
 # -----------------------------------
 with left_col:
+    user_name = st.text_input("Enter your user name:", value=st.session_state.get("user_name", ""))
+    st.session_state["user_name"] = user_name
 
     action_word = st.text_input("Enter the intended meaning for the action e.g. I'm hungry")
 
@@ -586,7 +583,7 @@ with left_col:
                     all_rows.append(row)
 
             if all_rows:
-                csv_filename = f"keyframes_{datetime.now().strftime('%Y-%m-%d_%H-%M-%S')}.csv"
+                csv_filename = f"{action_class}_{user_name}_{datetime.now().strftime('%Y-%m-%d_%H-%M-%S')}.csv"
                 csv_path = os.path.join("csv", csv_filename)
 
                 # Check if the CSV exists, append if necessary
