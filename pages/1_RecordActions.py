@@ -409,9 +409,9 @@ repo_name = "dk23/A3CP_actions"
 local_repo_path = "local_repo"
 
 #attempting to fix repo problem
-import shutil
-if os.path.exists(local_repo_path):
-    shutil.rmtree(local_repo_path)  # This ensures the directory is empty
+#import shutil
+#if os.path.exists(local_repo_path):
+    #shutil.rmtree(local_repo_path)  # This ensures the directory is empty
 
 
 # Configure generic Git identity
