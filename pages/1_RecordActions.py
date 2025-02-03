@@ -497,7 +497,7 @@ file_exists = os.path.isfile(master_csv_file)
 # -----------------------------------
 with left_col:
     user_name = st.text_input("Enter your user name:", value=st.session_state.get("user_name", ""))
-    st.session_state["user_name"] = user_name
+    #st.session_state["user_name"] = user_name
 
     action_word = st.text_input("Enter the intended meaning for the action e.g. I'm hungry")
 
