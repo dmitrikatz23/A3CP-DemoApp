@@ -1,69 +1,20 @@
 import os
 import pandas as pd
 import streamlit as st
+import matplotlib.pyplot as plt
+import numpy as np
+import time
+from huggingface_hub import HfApi
+import matplotlib.animation as animation
 
-# Optional: set page config for this "Data Visualizer" page
-st.set_page_config(page_title="Data Visualizer", layout="centered")
+# -----------------------------------
+# Streamlit Page Configuration
+# -----------------------------------
+st.set_page_config(layout="wide", page_title="Dataset Visualizer")
 
-st.title("Data Visualizer")
-
-# Attempt to retrieve the CSV file path from session state
-# (as set in 1_RecordActions.py)
-csv_file = st.session_state.get("csv_file", None)
-
-if not csv_file:
-    # If there's no file in session state, 
-    # fallback to a default path or prompt the user
-    st.warning("No CSV file found in session state. Please record actions first!")
-else:
-    # Check if the file actually exists on the filesystem
-    if not os.path.exists(csv_file):
-        st.error(f"CSV file not found at: {csv_file}")
-    else:
-        # Load the data
-        df = pd.read_csv(csv_file)
-
-        st.subheader("Recorded Actions Data")
-        st.write(f"**File Path:** `{csv_file}`")
-        
-        # Show a preview of the data
-        st.dataframe(df.head(20))
-
-        st.markdown("---")
-        st.subheader("Dataset Summary")
-        st.write(df.describe())
-
-        # Optional: Basic filtering or selection
-        # For example, select a specific action
-        actions_available = df['class'].unique().tolist() if 'class' in df.columns else []
-        if actions_available:
-            selected_action = st.selectbox("Filter by Action:", options=["All"] + actions_available)
-            
-            if selected_action != "All":
-                df_filtered = df[df['class'] == selected_action]
-            else:
-                df_filtered = df
-        else:
-            df_filtered = df
-
-        st.markdown("### Filtered Data Preview")
-        st.dataframe(df_filtered.head(20))
-
-        # You could add basic charts here, e.g., a bar chart of how many rows per action
-        if 'class' in df.columns:
-            action_counts = df['class'].value_counts()
-            st.bar_chart(action_counts)
-        
-        # Any other charts / analyses you want to display
-        st.markdown("---")
-        st.info("Feel free to add more custom visualizations based on your CSV data!")
-
-
-import os
-import pandas as pd
-import random
-import streamlit as st
-from huggingface_hub import Repository
+# Hugging Face repository details
+HF_REPO_NAME = "dk23/A3CP_actions"
+LOCAL_DATASET_DIR = "local_repo"
 
 # Load Hugging Face token from environment variables
 hf_token = os.getenv("Recorded_Datasets")
@@ -71,56 +22,107 @@ if not hf_token:
     st.error("Hugging Face token not found. Please ensure the 'Recorded_Datasets' secret is added in the Space settings.")
     st.stop()
 
-# Hugging Face repository details
-repo_name = "dk23/A3CP_actions"
-local_repo_path = "local_repo"
+# Initialize Hugging Face API
+hf_api = HfApi()
 
-# Configure generic Git identity
-git_user = "A3CP_bot"
-git_email = "no-reply@huggingface.co"
+# -----------------------------------
+# Left Column: Dataset Selector and Loader
+# -----------------------------------
+left_col, right_col = st.columns([1, 2])
 
-# CSV file paths
-csv_file_name = "A3CP_actions.csv"
-csv_file_local = csv_file_name
-csv_file_repo = os.path.join(local_repo_path, csv_file_name)
+with left_col:
+    st.header("Available Datasets")
 
-# Create CSV if it doesn't exist
-if not os.path.exists(csv_file_local):
-    df = pd.DataFrame(columns=[str(i) for i in range(1, 11)])
-    df.to_csv(csv_file_local, index=False)
+    # Load Files button to fetch and sort files from the repository
+    if st.button("Load Files"):
+        try:
+            files = hf_api.list_repo_files(HF_REPO_NAME, repo_type="dataset", token=hf_token)
+            # Filter CSV files only and sort them in reverse (most recent first, assuming filenames include timestamps)
+            csv_files = sorted([f for f in files if f.endswith(".csv")], reverse=True)
+            st.session_state["repo_files"] = csv_files
+            st.success("Files loaded successfully!")
+        except Exception as e:
+            st.error(f"Error loading files: {e}")
 
-# Load the existing CSV
-df = pd.read_csv(csv_file_local)
+    # Display the loaded files in a selectbox (if available)
+    if "repo_files" in st.session_state and st.session_state["repo_files"]:
+        selected_dataset = st.selectbox("Select a dataset to visualize:", st.session_state["repo_files"])
+        
+        # Download the selected dataset if it does not exist locally
+        dataset_path = os.path.join(LOCAL_DATASET_DIR, selected_dataset)
+        if not os.path.exists(dataset_path):
+            with st.spinner(f"Downloading {selected_dataset}..."):
+                hf_api.hf_hub_download(
+                    HF_REPO_NAME,
+                    selected_dataset,
+                    local_dir=LOCAL_DATASET_DIR,
+                    repo_type="dataset",
+                    token=hf_token
+                )
+        st.success(f"Selected dataset: {selected_dataset}")
+    else:
+        st.warning("No datasets loaded from repository.")
+        st.stop()
 
-# Clone or create the Hugging Face repository
-repo = Repository(local_dir=local_repo_path, clone_from=repo_name, use_auth_token=hf_token, repo_type="dataset")
+# -----------------------------------
+# Right Column: Visualization
+# -----------------------------------
+def animate_landmarks(data, save_path, frame_skip=2):
+    """Generate an animation and save as a GIF with faster processing."""
+    # Reduce the number of frames processed
+    data = data.iloc[::frame_skip, :].reset_index(drop=True)
+    num_frames = len(data)
 
-# Configure Git user details (Positional Arguments)
-repo.git_config_username_and_email(git_user, git_email)
+    fig, ax = plt.subplots(figsize=(5, 5))
+    ax.set_xlim(0, 1)
+    ax.set_ylim(0, 1)
+    ax.set_xlabel("X Coordinate")
+    ax.set_ylabel("Y Coordinate")
+    ax.set_title("Gesture Landmark Animation")
+    ax.invert_yaxis()  # Flip the y-axis to match MediaPipe coordinate system
 
-# Function to save CSV permanently
-def save_to_repo():
-    os.makedirs(local_repo_path, exist_ok=True)
-    df.to_csv(csv_file_repo, index=False)
-    repo.git_add(csv_file_name)
-    repo.git_commit("Update A3CP actions CSV")
-    repo.git_push()
+    def update(frame):
+        ax.clear()
+        ax.set_xlim(0, 1)
+        ax.set_ylim(0, 1)
+        ax.set_xlabel("X Coordinate")
+        ax.set_ylabel("Y Coordinate")
+        ax.set_title(f"Gesture Landmark Animation - Frame {frame+1}/{num_frames}")
+        ax.invert_yaxis()  # Keep y-axis flipped
 
-# Streamlit app
-st.title("Save A3CP Actions to Hugging Face")
+        # Convert data to NumPy array for faster indexing
+        frame_data = data.iloc[frame].to_numpy()
+        x_vals = frame_data[1::3]  # Extract x values (every third column starting from index 1)
+        y_vals = frame_data[2::3]  # Extract y values (every third column starting from index 2)
+        ax.scatter(x_vals, y_vals, c='blue', marker='o', alpha=0.5)
 
-if st.button("Add Row to CSV"):
-    new_row = pd.DataFrame([{str(i): random.randint(1, 10) for i in range(1, 11)}])
-    df = pd.concat([df, new_row], ignore_index=True)
-    df.to_csv(csv_file_local, index=False)
-    st.success("Row added!")
+    ani = animation.FuncAnimation(fig, update, frames=num_frames, interval=50, blit=False)
 
-if st.button("Save to Hugging Face Repository"):
-    try:
-        save_to_repo()
-        st.success(f"CSV saved to Hugging Face repository: {repo_name}")
-    except Exception as e:
-        st.error(f"Failed to save to repository: {e}")
+    # Save animation as GIF using a faster backend (`imagemagick`)
+    ani.save(save_path, writer='imagemagick', fps=15)
+    plt.close(fig)  # Close figure to prevent Streamlit from rendering a static plot
 
-st.write("Current CSV:")
-st.dataframe(df)
+if "playing" not in st.session_state:
+    st.session_state["playing"] = False
+
+with right_col:
+    st.header("Dataset Visualization")
+
+    if st.button("Start Animation"):
+        st.session_state["playing"] = True
+
+    if st.button("Stop Animation"):
+        st.session_state["playing"] = False
+
+    if st.session_state["playing"]:
+        with st.spinner("Processing dataset..."):
+            # Load dataset from the downloaded file
+            df = pd.read_csv(dataset_path)
+            # Extract landmark data (skip first two columns: 'class' and 'sequence_id')
+            landmark_data = df.iloc[:, 2:]
+            # Define GIF save path
+            gif_path = "landmark_animation.gif"
+            # Generate and save animation (skip every 2nd frame for speed)
+            animate_landmarks(landmark_data, gif_path, frame_skip=2)
+            # Display the saved GIF in Streamlit
+            st.image(gif_path)
