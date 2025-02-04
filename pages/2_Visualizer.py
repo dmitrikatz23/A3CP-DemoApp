@@ -6,6 +6,7 @@ import numpy as np
 import time
 from huggingface_hub import HfApi
 import matplotlib.animation as animation
+from datetime import datetime
 
 # -----------------------------------
 # Streamlit Page Configuration
@@ -26,6 +27,25 @@ if not hf_token:
 hf_api = HfApi()
 
 # -----------------------------------
+# Helper Function to Extract Datetime from Filename
+# Expected filename format: <user name>_<action>_<YYYY-MM-DD_HH-MM-SS>.csv
+def extract_datetime_from_filename(filename):
+    # Remove the '.csv' extension
+    if filename.endswith(".csv"):
+        base = filename[:-4]
+    else:
+        base = filename
+    parts = base.split("_")
+    # Expecting at least three parts with the last two forming the datetime string
+    if len(parts) >= 3:
+        dt_str = parts[-2] + "_" + parts[-1]
+        try:
+            return datetime.strptime(dt_str, "%Y-%m-%d_%H-%M-%S")
+        except Exception:
+            return None
+    return None
+
+# -----------------------------------
 # Left Column: Dataset Selector and Loader
 # -----------------------------------
 left_col, right_col = st.columns([1, 2])
@@ -37,9 +57,15 @@ with left_col:
     if st.button("Load Files"):
         try:
             files = hf_api.list_repo_files(HF_REPO_NAME, repo_type="dataset", token=hf_token)
-            # Filter CSV files only and sort them in reverse (most recent first, assuming filenames include timestamps)
-            csv_files = sorted([f for f in files if f.endswith(".csv")], reverse=True)
-            st.session_state["repo_files"] = csv_files
+            # Filter CSV files only
+            csv_files = [f for f in files if f.endswith(".csv")]
+            # Sort files by the extracted datetime (most recent first)
+            csv_files_sorted = sorted(
+                csv_files,
+                key=lambda f: extract_datetime_from_filename(f) or datetime.min,
+                reverse=True
+            )
+            st.session_state["repo_files"] = csv_files_sorted
             st.success("Files loaded successfully!")
         except Exception as e:
             st.error(f"Error loading files: {e}")
