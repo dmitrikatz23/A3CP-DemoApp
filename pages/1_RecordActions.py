@@ -408,7 +408,6 @@ if not hf_token:
 repo_name = "dk23/A3CP_actions"
 local_repo_path = "local_repo"
 
-
 # Configure generic Git identity
 git_user = "A3CP_bot"
 git_email = "no-reply@huggingface.co"
@@ -420,6 +419,10 @@ repo = Repository(local_dir=local_repo_path, clone_from=repo_name, use_auth_toke
 repo.git_config_username_and_email(git_user, git_email)
 
 def save_to_huggingface(csv_path):
+    """
+    Save the CSV file to the Hugging Face repository.
+    Updates the dataset with new actions without overwriting previous ones.
+    """
     timestamp = datetime.now().strftime("%Y-%m-%d_%H-%M-%S")
     repo_csv_filename = f"A3CP_actions_{timestamp}.csv"
     repo_csv_path = os.path.join(local_repo_path, repo_csv_filename)
@@ -492,8 +495,6 @@ file_exists = os.path.isfile(master_csv_file)
 # Left Column: Controls
 # -----------------------------------
 with left_col:
-    user_name = st.text_input("Enter your user name:", value=st.session_state.get("user_name", ""))
-    #st.session_state["user_name"] = user_name
 
     action_word = st.text_input("Enter the intended meaning for the action e.g. I'm hungry")
 
@@ -579,7 +580,7 @@ with left_col:
                     all_rows.append(row)
 
             if all_rows:
-                csv_filename = f"{user_name}_{action_class}_{datetime.now().strftime('%Y-%m-%d_%H-%M-%S')}.csv"  # <-- Changed filename format
+                csv_filename = f"keyframes_{datetime.now().strftime('%Y-%m-%d_%H-%M-%S')}.csv"
                 csv_path = os.path.join("csv", csv_filename)
 
                 # Check if the CSV exists, append if necessary
