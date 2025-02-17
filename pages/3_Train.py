@@ -14,22 +14,27 @@ from tensorflow.keras.models import Sequential
 from tensorflow.keras.layers import LSTM, Dense, Dropout, Masking
 from tensorflow.keras.optimizers import Adam
 
-# Repository details:
-# CSV files are in the dataset repo:
+# Repository details
 dataset_repo_name = "dk23/A3CP_actions"  # Dataset repo containing CSVs
-# Trained models will be saved in the model repo:
-model_repo_name = "dk23/A3CP_models"       # Model repo for saving the trained model
+model_repo_name = "dk23/A3CP_models"    # Model repo for saving the trained model
 
-# Local folder for temporary files:
+# Local folder for temporary files
 data_path = "local_data"
 os.makedirs(data_path, exist_ok=True)
 
 st.title("Train Gesture Recognition Model")
 
+# Initialize Hugging Face API with authentication
+api = HfApi()
+hf_token = os.getenv("HF_TOKEN")
+if hf_token is None:
+    st.error("Hugging Face token not found. Please set the HF_TOKEN environment variable.")
+    st.stop()
+
 # Fetch available CSV files from the dataset repository
+@st.cache
 def get_csv_files():
-    api = HfApi()  # make sure you're logged in or have set HF_TOKEN as env variable
-    repo_files = api.list_repo_files(dataset_repo_name, repo_type="dataset")
+    repo_files = api.list_repo_files(dataset_repo_name, repo_type="dataset", token=hf_token)
     return [f for f in repo_files if f.endswith(".csv")]
 
 csv_files = get_csv_files()
@@ -38,13 +43,13 @@ selected_csvs = st.multiselect("Select CSV files for training:", csv_files)
 if st.button("Download Selected CSVs"):
     downloaded_files = []
     for csv in selected_csvs:
-        file_path = hf_hub_download(dataset_repo_name, csv, repo_type="dataset", local_dir=data_path)
+        file_path = hf_hub_download(dataset_repo_name, csv, repo_type="dataset", local_dir=data_path, token=hf_token)
         downloaded_files.append(file_path)
     st.success(f"Downloaded {len(downloaded_files)} files!")
 
 if st.button("Train Model") and selected_csvs:
     # Read and combine CSVs into one DataFrame
-    all_dataframes = [pd.read_csv(os.path.join(data_path, csv)) for csv in selected_csvs]
+    all_dataframes = [pd.read_csv(os.path.join(data_path, os.path.basename(csv))) for csv in selected_csvs]
     df = pd.concat(all_dataframes, ignore_index=True)
 
     # Create a unique identifier per sequence
@@ -113,28 +118,13 @@ if st.button("Train Model") and selected_csvs:
     model.save(model_path)
     joblib.dump(le, encoder_path)
 
-    # Initialize HF API (ensure you’re authenticated, e.g., by setting the HF_TOKEN env variable)
-    api = HfApi()
-
-    # Ensure the model repository exists; if not, create it.
-    if not api.repo_exists(model_repo_name, repo_type="model"):
+    # Ensure the model repository exists; if not, create it
+    if not api.repo_exists(model_repo_name, repo_type="model", token=hf_token):
         st.info(f"Repository '{model_repo_name}' not found. Creating it now...")
-        api.create_repo(repo_id=model_repo_name, repo_type="model", private=False)
+        api.create_repo(repo_id=model_repo_name, repo_type="model", private=False, token=hf_token)
 
     # Upload the files to the Hugging Face model repository
     api.upload_file(
-        path_or_fileobj=model_path, 
-        path_in_repo=model_filename, 
-        repo_id=model_repo_name, 
-        repo_type="model"
-    )
-    api.upload_file(
-        path_or_fileobj=encoder_path, 
-        path_in_repo=encoder_filename, 
-        repo_id=model_repo_name, 
-        repo_type="model"
-    )
-
-    st.success(
-        f"Model and label encoder saved and uploaded to Hugging Face as '{model_filename}' and '{encoder_filename}'!"
-    )
+        path_or_fileobj=model
+::contentReference[oaicite:0]{index=0}
+ 
