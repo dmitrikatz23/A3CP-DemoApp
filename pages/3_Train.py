@@ -123,8 +123,24 @@ if st.button("Train Model") and selected_csvs:
         st.info(f"Repository '{model_repo_name}' not found. Creating it now...")
         api.create_repo(repo_id=model_repo_name, repo_type="model", private=False, token=hf_token)
 
-    # Upload the files to the Hugging Face model repository
+    # Upload the model file to the Hugging Face model repository
     api.upload_file(
-        path_or_fileobj=model
-::contentReference[oaicite:0]{index=0}
- 
+        path_or_fileobj=model_path,          # Path to the saved model file
+        path_in_repo=model_filename,         # Destination path in the repository
+        repo_id=model_repo_name,             # Repository ID
+        repo_type="model",                   # Repository type
+        token=hf_token                       # Authentication token
+    )
+
+    # Upload the label encoder file to the Hugging Face model repository
+    api.upload_file(
+        path_or_fileobj=encoder_path,        # Path to the saved label encoder file
+        path_in_repo=encoder_filename,       # Destination path in the repository
+        repo_id=model_repo_name,             # Repository ID
+        repo_type="model",                   # Repository type
+        token=hf_token                       # Authentication token
+    )
+
+    st.success(
+        f"Model and label encoder saved and uploaded to Hugging Face as '{model_filename}' and '{encoder_filename}'!"
+    )
