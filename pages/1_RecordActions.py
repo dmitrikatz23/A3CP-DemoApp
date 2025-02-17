@@ -495,6 +495,9 @@ file_exists = os.path.isfile(master_csv_file)
 # Left Column: Controls
 # -----------------------------------
 with left_col:
+    # Prompt for user name and store it in session state.
+    user_name = st.text_input("Enter your user name:", value=st.session_state.get("user_name", ""))
+    st.session_state["user_name"] = user_name
 
     action_word = st.text_input("Enter the intended meaning for the action e.g. I'm hungry")
 
@@ -517,6 +520,7 @@ with left_col:
         st.session_state['action_word'] = action_word  # Store the action word in session state
 
         st.success(f"Action '{action_word}' confirmed!")
+
 
     # If an action has been confirmed, show the WebRTC streamer
     if st.session_state.get('action_confirmed', False):
@@ -580,7 +584,10 @@ with left_col:
                     all_rows.append(row)
 
             if all_rows:
-                csv_filename = f"keyframes_{datetime.now().strftime('%Y-%m-%d_%H-%M-%S')}.csv"
+                # Use the user name and action in the filename.
+                # Ensure user_name is not empty, otherwise use "unknown"
+                uname = st.session_state.get("user_name", "unknown") or "unknown"
+                csv_filename = f"{uname}_{action_class}_{datetime.now().strftime('%Y-%m-%d_%H-%M-%S')}.csv"
                 csv_path = os.path.join("csv", csv_filename)
 
                 # Check if the CSV exists, append if necessary
@@ -610,6 +617,7 @@ with left_col:
         else:
             debug_log("🟡 Retrieved 0 frames for saving.")
             st.warning("⚠️ Landmark queue is empty! Nothing to save.")
+
 
    
 with left_col:
