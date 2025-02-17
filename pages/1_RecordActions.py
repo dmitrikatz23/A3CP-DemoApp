@@ -419,27 +419,29 @@ repo = Repository(local_dir=local_repo_path, clone_from=repo_name, use_auth_toke
 repo.git_config_username_and_email(git_user, git_email)
 
 def save_to_huggingface(csv_path):
-    """
-    Save the CSV file to the Hugging Face repository.
-    Updates the dataset with new actions without overwriting previous ones.
-    """
+    # Get current timestamp, user name, and action word from session state.
     timestamp = datetime.now().strftime("%Y-%m-%d_%H-%M-%S")
-    repo_csv_filename = f"A3CP_actions_{timestamp}.csv"
+    uname = st.session_state.get("user_name", "unknown") or "unknown"
+    action_class = st.session_state.get("action_word", "Unknown_Action")
+    
+    # Use the updated naming scheme in the repository filename.
+    repo_csv_filename = f"{uname}_{action_class}_{timestamp}.csv"
     repo_csv_path = os.path.join(local_repo_path, repo_csv_filename)
 
-    # Ensure local repo directory exists
+    # Ensure local repo directory exists.
     os.makedirs(local_repo_path, exist_ok=True)
 
-    # Copy the CSV to the repo folder
+    # Copy the CSV to the repository folder.
     df = pd.read_csv(csv_path)
     df.to_csv(repo_csv_path, index=False)
 
-    # Add, commit, and push to Hugging Face
+    # Add, commit, and push to Hugging Face.
     repo.git_add(repo_csv_filename)
-    repo.git_commit(f"Update A3CP actions CSV ({timestamp})")
+    repo.git_commit(f"Update {action_class} CSV by {uname} ({timestamp})")
     repo.git_push()
 
     st.success(f"CSV saved to Hugging Face repository: {repo_name} as {repo_csv_filename}")
+
 
 
 # -----------------------------------
