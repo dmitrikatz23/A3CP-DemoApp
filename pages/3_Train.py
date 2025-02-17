@@ -1,7 +1,7 @@
-import streamlit as st
+import os
 import pandas as pd
 import numpy as np
-import os
+import streamlit as st
 import joblib
 import datetime
 from huggingface_hub import HfApi, hf_hub_download
@@ -24,15 +24,17 @@ os.makedirs(data_path, exist_ok=True)
 
 st.title("Train Gesture Recognition Model")
 
-# Initialize Hugging Face API with authentication
-api = HfApi()
-hf_token = os.getenv("HF_TOKEN")
-if hf_token is None:
-    st.error("Hugging Face token not found. Please set the HF_TOKEN environment variable.")
+# Load Hugging Face token from environment variables (secret: "Recorded_Datasets")
+hf_token = os.getenv("Recorded_Datasets")
+if not hf_token:
+    st.error("Hugging Face token not found. Please ensure the 'Recorded_Datasets' secret is added in the Space settings.")
     st.stop()
 
+# Initialize Hugging Face API
+api = HfApi()
+
 # Fetch available CSV files from the dataset repository
-@st.cache
+@st.cache_data
 def get_csv_files():
     repo_files = api.list_repo_files(dataset_repo_name, repo_type="dataset", token=hf_token)
     return [f for f in repo_files if f.endswith(".csv")]
@@ -123,22 +125,20 @@ if st.button("Train Model") and selected_csvs:
         st.info(f"Repository '{model_repo_name}' not found. Creating it now...")
         api.create_repo(repo_id=model_repo_name, repo_type="model", private=False, token=hf_token)
 
-    # Upload the model file to the Hugging Face model repository
+    # Upload the files to the Hugging Face model repository
     api.upload_file(
-        path_or_fileobj=model_path,          # Path to the saved model file
-        path_in_repo=model_filename,         # Destination path in the repository
-        repo_id=model_repo_name,             # Repository ID
-        repo_type="model",                   # Repository type
-        token=hf_token                       # Authentication token
+        path_or_fileobj=model_path, 
+        path_in_repo=model_filename, 
+        repo_id=model_repo_name, 
+        repo_type="model",
+        token=hf_token
     )
-
-    # Upload the label encoder file to the Hugging Face model repository
     api.upload_file(
-        path_or_fileobj=encoder_path,        # Path to the saved label encoder file
-        path_in_repo=encoder_filename,       # Destination path in the repository
-        repo_id=model_repo_name,             # Repository ID
-        repo_type="model",                   # Repository type
-        token=hf_token                       # Authentication token
+        path_or_fileobj=encoder_path, 
+        path_in_repo=encoder_filename, 
+        repo_id=model_repo_name, 
+        repo_type="model",
+        token=hf_token
     )
 
     st.success(
