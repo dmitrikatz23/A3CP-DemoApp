@@ -3,7 +3,8 @@ import pandas as pd
 import numpy as np
 import os
 import joblib
-from huggingface_hub import HfApi, hf_hub_download
+import datetime
+from huggingface_hub import HfApi, hf_hub_download, upload_file
 from sklearn.model_selection import train_test_split
 from sklearn.preprocessing import LabelEncoder
 from sklearn.utils.class_weight import compute_class_weight
@@ -14,7 +15,7 @@ from tensorflow.keras.layers import LSTM, Dense, Dropout, Masking
 from tensorflow.keras.optimizers import Adam
 
 # Hugging Face repo details
-repo_name = "dk23/A3CP_actions"
+repo_name = "dk23/A3CP_models"
 data_path = "local_data"
 os.makedirs(data_path, exist_ok=True)
 
@@ -76,6 +77,19 @@ if st.button("Train Model") and selected_csvs:
     model.compile(optimizer=Adam(learning_rate=0.001), loss='categorical_crossentropy', metrics=['accuracy'])
     model.fit(X_train, y_train, epochs=50, batch_size=32, validation_data=(X_test, y_test), class_weight=class_weights_dict)
 
-    model.save(os.path.join(data_path, "gesture_model.h5"))
-    joblib.dump(le, os.path.join(data_path, "label_encoder.pkl"))
-    st.success("Model and label encoder saved!")
+    # Generate a timestamped model name
+    timestamp = datetime.datetime.now().strftime("%Y%m%d_%H%M%S")
+    model_filename = f"LSTM_model_{timestamp}.h5"
+    encoder_filename = f"label_encoder_{timestamp}.pkl"
+    
+    model_path = os.path.join(data_path, model_filename)
+    encoder_path = os.path.join(data_path, encoder_filename)
+    model.save(model_path)
+    joblib.dump(le, encoder_path)
+
+    # Upload to Hugging Face
+    api = HfApi()
+    api.upload_file(path_or_fileobj=model_path, path_in_repo=model_filename, repo_id=repo_name)
+    api.upload_file(path_or_fileobj=encoder_path, path_in_repo=encoder_filename, repo_id=repo_name)
+
+    st.success(f"Model and label encoder saved and uploaded to Hugging Face as {model_filename} and {encoder_filename}!")
