@@ -66,7 +66,7 @@ if 'streamer_running' not in st.session_state:
 # -----------------------------------
 # Hugging Face Integration
 # -----------------------------------
-hf_token = os.getenv("HF_TOKEN")
+hf_token = os.getenv("Recorded_Datasets")
 if not hf_token:
     st.error("Hugging Face token not found. Please set the 'HF_TOKEN' environment variable.")
     st.stop()
