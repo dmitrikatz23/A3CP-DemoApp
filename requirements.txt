@@ -28,3 +28,4 @@ tensorflow>=2.6.0  # TensorFlow version compatible with your existing packages
 huggingface_hub>=0.0.12
 joblib>=1.0.0
 
+requests   #added for tryit.py
