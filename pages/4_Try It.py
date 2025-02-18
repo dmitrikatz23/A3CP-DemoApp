@@ -1,36 +1,33 @@
-# Import necessary libraries
+# -----------------------------------
+# Imports and Configuration
+# -----------------------------------
 import os
 import logging
 import threading
-from pathlib import Path
 from collections import deque
 from datetime import datetime
 import re
-import csv
-import time
-import pandas as pd
 import numpy as np
-import streamlit as st
 import cv2
 import av
-import mediapipe as mp
-from streamlit_webrtc import WebRtcMode, webrtc_streamer
-from huggingface_hub import HfApi, hf_hub_download, Repository
-from sklearn.preprocessing import LabelEncoder
-from tensorflow.keras.models import load_model
+import streamlit as st
 import joblib
+from huggingface_hub import HfApi, hf_hub_download
+from tensorflow.keras.models import load_model
+from streamlit_webrtc import WebRtcMode, webrtc_streamer
+import mediapipe as mp
 
 # -----------------------------------
 # Logging Setup
 # -----------------------------------
-DEBUG_MODE = False  # Set to True only for debugging
+DEBUG_MODE = False  # Set to True to enable debug logging
 
 def debug_log(message):
     if DEBUG_MODE:
-        logging.info(message)
+        logging.debug(message)
 
 logging.basicConfig(
-    level=logging.DEBUG if DEBUG_MODE else logging.WARNING,
+    level=logging.DEBUG if DEBUG_MODE else logging.INFO,
     format="%(asctime)s [%(levelname)s] %(message)s",
     handlers=[
         logging.StreamHandler(),
@@ -39,203 +36,133 @@ logging.basicConfig(
 )
 
 logger = logging.getLogger(__name__)
-logger.info("🚀 Logging is initialized!")
+logger.info("🚀 Logging initialized!")
 
 # -----------------------------------
-# Threading and Session State Management
+# Streamlit Page Configuration
+# -----------------------------------
+st.set_page_config(layout="wide", page_title="Gesture Recognition")
+st.title("Gesture Recognition System")
+
+# -----------------------------------
+# Hugging Face Repository and Token Setup
+# -----------------------------------
+# Use the working token environment variable name
+hf_token = os.getenv("Recorded_Datasets")
+if not hf_token:
+    st.error("Hugging Face token not found. Please ensure the 'Recorded_Datasets' secret is added in the Space settings.")
+    st.stop()
+
+hf_api = HfApi(token=hf_token)
+MODEL_REPO_NAME = "dk23/A3CP_models"  # Update with your repository name
+LOCAL_MODEL_DIR = "local_models"
+os.makedirs(LOCAL_MODEL_DIR, exist_ok=True)
+
+# -----------------------------------
+# Session State Initialization
 # -----------------------------------
 if "landmark_queue" not in st.session_state:
     st.session_state.landmark_queue = deque(maxlen=1000)
-
-landmark_queue = st.session_state.landmark_queue
-
 if "lock" not in st.session_state:
     st.session_state.lock = threading.Lock()
+if "model" not in st.session_state:
+    st.session_state.model = None
+if "label_encoder" not in st.session_state:
+    st.session_state.label_encoder = None
+if "model_loaded" not in st.session_state:
+    st.session_state.model_loaded = False
+if "stream_active" not in st.session_state:
+    st.session_state.stream_active = False
+if "recognized_action" not in st.session_state:
+    st.session_state.recognized_action = "Waiting for prediction..."
 
 lock = st.session_state.lock
 
-if 'landmark_queue_snapshot' not in st.session_state:
-    st.session_state['landmark_queue_snapshot'] = []
-
-if 'action_word' not in st.session_state:
-    st.session_state['action_word'] = "Unknown_Action"
-
-if 'streamer_running' not in st.session_state:
-    st.session_state['streamer_running'] = False
-
 # -----------------------------------
-# Hugging Face Integration
+# MediaPipe Initialization
 # -----------------------------------
-hf_token = os.getenv("Recorded_Datasets")
-if not hf_token:
-    st.error("Hugging Face token not found. Please set the 'HF_TOKEN' environment variable.")
-    st.stop()
-
-api = HfApi()
-
-# Model repository details
-model_repo_name = "dk23/A3CP_models"
-local_model_path = "local_models"
-os.makedirs(local_model_path, exist_ok=True)
-
-# Fetch available models and encoders from the repository
-@st.cache_data
-def get_model_files():
-    repo_files = api.list_repo_files(model_repo_name, repo_type="model", token=hf_token)
-    model_files = [f for f in repo_files if f.endswith(".h5")]
-    encoder_files = [f for f in repo_files if f.endswith(".pkl")]
-    return model_files, encoder_files
-
-model_files, encoder_files = get_model_files()
-
-# -----------------------------------
-# Streamlit UI for Model and Encoder Selection
-# -----------------------------------
-st.title("Gesture Recognition with Model Selection")
-
-# Model selection
-selected_model_file = st.selectbox("Select a pre-trained model:", model_files)
-selected_encoder_file = st.selectbox("Select a label encoder:", encoder_files)
-
-# Download and load the selected model and encoder
-if st.button("Load Model and Encoder"):
-    with st.spinner("Downloading and loading model and encoder..."):
-        try:
-            # Download model
-            model_path = hf_hub_download(
-                repo_id=model_repo_name,
-                filename=selected_model_file,
-                repo_type="model",
-                local_dir=local_model_path,
-                token=hf_token
-            )
-            model = load_model(model_path)
-            st.success(f"Model '{selected_model_file}' loaded successfully.")
-
-            # Download encoder
-            encoder_path = hf_hub_download(
-                repo_id=model_repo_name,
-                filename=selected_encoder_file,
-                repo_type="model",
-                local_dir=local_model_path,
-                token=hf_token
-            )
-            label_encoder = joblib.load(encoder_path)
-            st.success(f"Label encoder '{selected_encoder_file}' loaded successfully.")
-
-            # Store in session state
-            st.session_state['model'] = model
-            st.session_state['label_encoder'] = label_encoder
-
-        except Exception as e:
-            st.error(f"Error loading model or encoder: {e}")
-            st.stop()
-
-# -----------------------------------
-# MediaPipe Initialization & Constants
-# -----------------------------------
-mp_drawing = mp.solutions.drawing_utils
 mp_holistic = mp.solutions.holistic
-
-num_pose_landmarks = 33
-num_hand_landmarks_per_hand = 21
-num_face_landmarks = 468
-
-angle_names_base = [
-    'thumb_mcp', 'thumb_ip',
-    'index_mcp', 'index_pip', 'index_dip',
-    'middle_mcp', 'middle_pip', 'middle_dip',
-    'ring_mcp', 'ring_pip', 'ring_dip',
-    'little_mcp', 'little_pip', 'little_dip'
-]
-left_hand_angle_names = [f'left_{name}' for name in angle_names_base]
-right_hand_angle_names = [f'right_{name}' for name in angle_names_base]
-
-pose_landmarks = [f'pose_{axis}{i}' for i in range(1, num_pose_landmarks + 1) for axis in ['x', 'y', 'v']]
-left_hand_landmarks = [f'left_hand_{axis}{i}' for i in range(1, num_hand_landmarks_per_hand + 1) for axis in ['x', 'y', 'v']]
-right_hand_landmarks = [f'right_hand_{axis}{i}' for i in range(1, num_hand_landmarks_per_hand + 1) for axis in ['x', 'y', 'v']]
-face_landmarks = [f'face_{axis}{i}' for i in range(1, num_face_landmarks + 1) for axis in ['x', 'y', 'v']]
-
-# -----------------------------------
-# CSV Header Loader
-# -----------------------------------
-@st.cache_data
-def load_csv_header():
-    return (
-        ['class', 'sequence_id']
-        + pose_landmarks
-        + left_hand_landmarks
-        + left_hand_angle_names
-        + right_hand_landmarks
-        + right_hand_angle_names
-        + face_landmarks
-    )
-
-header = load_csv_header()
-
-# -----------------------------------
-# MediaPipe Model Loader
-# -----------------------------------
-@st.cache_resource
-def load_mediapipe_model():
-    return mp.solutions.holistic.Holistic(
-        min_detection_confidence=0.5,
-        min_tracking_confidence=0.5,
-        static_image_mode=False
-    )
-
-holistic_model = load_mediapipe_model()
+mp_drawing = mp.solutions.drawing_utils
+holistic_model = mp_holistic.Holistic(
+    min_detection_confidence=0.5,
+    min_tracking_confidence=0.5,
+    static_image_mode=False
+)
 
 # -----------------------------------
 # Helper Functions
 # -----------------------------------
+def store_landmarks(row_data):
+    """Store landmark data in a thread-safe manner."""
+    with st.session_state.lock:
+        st.session_state.landmark_queue.append(row_data)
+    debug_log(f"Stored {len(st.session_state.landmark_queue)} frames in queue")
+
+def get_landmark_queue():
+    """Retrieve a snapshot of the landmark queue."""
+    with st.session_state.lock:
+        queue_snapshot = list(st.session_state.landmark_queue)
+    debug_log(f"Snapshot taken with {len(queue_snapshot)} frames.")
+    return queue_snapshot
+
+def clear_landmark_queue():
+    """Clear the landmark queue."""
+    with st.session_state.lock:
+        debug_log(f"Clearing queue... Current size: {len(st.session_state.landmark_queue)}")
+        st.session_state.landmark_queue.clear()
+    debug_log("Landmark queue cleared.")
+
 def calculate_angle(a, b, c):
-    """
-    Calculate the angle between three points.
-    """
+    """Calculate the angle at point b given three points."""
     a = np.array(a)
     b = np.array(b)
     c = np.array(c)
-    radians = np.arctan2(c[1] - b[1], c[0] - b[0]) - np.arctan2(a[1] - b[1], a[0] - b[0])
+    radians = np.arctan2(c[1]-b[1], c[0]-b[0]) - np.arctan2(a[1]-b[1], a[0]-b[0])
     angle = np.abs(radians * 180.0 / np.pi)
     if angle > 180.0:
         angle = 360 - angle
     return angle
 
-def extract_hand_angles(hand_landmarks):
+def hand_angles(hand_landmarks):
     """
-    Extract angles for hand landmarks.
+    Calculate angles for each finger joint using hand landmarks.
+    Returns a list of angles.
     """
-    if not hand_landmarks:
-        return [0] * 15  # Return a list of zeros if no landmarks
+    # If no landmarks, return zeros
+    if not hand_landmarks or all((p[0] == 0 and p[1] == 0 and p[2] == 0) for p in hand_landmarks):
+        return [0] * 14  # Assuming 14 angles
 
-    # Define points for angle calculation
-    joint_list = [
-        (0, 1, 2), (1, 2, 3), (2, 3, 4),  # Thumb
-        (0, 5, 6), (5, 6, 7), (6, 7, 8),  # Index
-        (0, 9, 10), (9, 10, 11), (10, 11, 12),  # Middle
-        (0, 13, 14), (13, 14, 15), (14, 15, 16),  # Ring
-        (0, 17, 18), (17, 18, 19), (18, 19, 20)  # Pinky
+    # Create a dictionary for easy indexing
+    h = {i: hand_landmarks[i] for i in range(len(hand_landmarks))}
+    def pt(i):
+        return [h[i][0], h[i][1]]
+    return [
+        calculate_angle(pt(1), pt(2), pt(3)),  # thumb_mcp
+        calculate_angle(pt(2), pt(3), pt(4)),  # thumb_ip
+        calculate_angle(pt(0), pt(5), pt(6)),  # index_mcp
+        calculate_angle(pt(5), pt(6), pt(7)),  # index_pip
+        calculate_angle(pt(6), pt(7), pt(8)),  # index_dip
+        calculate_angle(pt(0), pt(9), pt(10)), # middle_mcp
+        calculate_angle(pt(9), pt(10), pt(11)),# middle_pip
+        calculate_angle(pt(10), pt(11), pt(12)),# middle_dip
+        calculate_angle(pt(0), pt(13), pt(14)),# ring_mcp
+        calculate_angle(pt(13), pt(14), pt(15)),# ring_pip
+        calculate_angle(pt(14), pt(15), pt(16)),# ring_dip
+        calculate_angle(pt(0), pt(17), pt(18)),# little_mcp
+        calculate_angle(pt(17), pt(18), pt(19)),# little_pip
+        calculate_angle(pt(18), pt(19), pt(20)) # little_dip
     ]
-
-    angles = []
-    for joint in joint_list:
-        a = [hand_landmarks[joint[0]].x, hand_landmarks[joint[0]].y]
-        b = [hand_landmarks[joint[1]].x, hand_landmarks[joint[1]].y]
-        c = [hand_landmarks[joint[2]].x, hand_landmarks[joint[2]].y]
-        angle = calculate_angle(a, b, c)
-        angles.append(angle)
-
-    return angles
 
 def process_frame(frame):
     """
-    Process a single frame to extract landmarks and angles.
+    Process a video frame: run MediaPipe Holistic, draw landmarks,
+    and extract the landmark data.
     """
     image_rgb = cv2.cvtColor(frame, cv2.COLOR_BGR2RGB)
     results = holistic_model.process(image_rgb)
-    annotated_image = frame.copy()
+    annotated_image = cv2.cvtColor(image_rgb, cv2.COLOR_RGB2BGR)
 
+    # Draw landmarks if available
     if results.pose_landmarks:
         mp_drawing.draw_landmarks(annotated_image, results.pose_landmarks, mp_holistic.POSE_CONNECTIONS)
     if results.left_hand_landmarks:
@@ -245,38 +172,115 @@ def process_frame(frame):
     if results.face_landmarks:
         mp_drawing.draw_landmarks(annotated_image, results.face_landmarks, mp_holistic.FACEMESH_TESSELATION)
 
-    # Extract landmarks and angles
-    pose_landmarks = results.pose_landmarks.landmark if results.pose_landmarks else []
-    left_hand_landmarks = results.left_hand_landmarks.landmark if results.left_hand_landmarks else []
-    right_hand_landmarks = results.right_hand_landmarks.landmark if results.right_hand_landmarks else []
-    face_landmarks = results.face_landmarks.landmark if results.face_landmarks else []
+    # Helper function to extract landmarks
+    def extract_data(landmarks, count):
+        if landmarks:
+            return [[lm.x, lm.y, lm.visibility] for lm in landmarks.landmark]
+        else:
+            return [[0, 0, 0]] * count
 
-    left_hand_angles = extract_hand_angles(left_hand_landmarks)
-    right_hand_angles = extract_hand_angles(right_hand_landmarks)
+    pose_data = extract_data(results.pose_landmarks, 33)
+    left_hand_data = extract_data(results.left_hand_landmarks, 21)
+    right_hand_data = extract_data(results.right_hand_landmarks, 21)
+    face_data = extract_data(results.face_landmarks, 468)
 
-    return annotated_image, pose_landmarks, left_hand_landmarks, right_hand_landmarks, face_landmarks, left_hand_angles, right_hand_angles
+    left_hand_angles_data = hand_angles(left_hand_data)
+    right_hand_angles_data = hand_angles(right_hand_data)
 
-def flatten_landmarks(pose, left_hand, right_hand, face, left_hand_angles, right_hand_angles):
+    return annotated_image, pose_data, left_hand_data, left_hand_angles_data, right_hand_data, right_hand_angles_data, face_data
+
+def flatten_landmarks(pose_data, left_hand_data, left_hand_angles_data, right_hand_data, right_hand_angles_data, face_data):
     """
-    Flatten all landmarks and angles into a single list.
+    Flatten all landmark data and angles into a single 1D list.
     """
-    def flatten(landmarks):
-        return [coord for landmark in landmarks for coord in (landmark.x, landmark.y, landmark.z)]
+    pose_flat = [val for landmark in pose_data for val in landmark]
+    left_hand_flat = [val for landmark in left_hand_data for val in landmark]
+    right_hand_flat = [val for landmark in right_hand_data for val in landmark]
+    face_flat = [val for landmark in face_data for val in landmark]
+    return pose_flat + left_hand_flat + left_hand_angles_data + right_hand_flat + right_hand_angles_data + face_flat
 
-    pose_flat = flatten(pose)
-    left_hand_flat = flatten(left_hand)
-    right_hand_flat = flatten(right_hand)
-    face_flat = flatten(face)
+# -----------------------------------
+# Model & Encoder Selection UI
+# -----------------------------------
+st.sidebar.header("Model & Encoder Selection")
+@st.cache_data
+def get_model_files():
+    repo_files = hf_api.list_repo_files(MODEL_REPO_NAME, repo_type="model", token=hf_token)
+    model_files = [f for f in repo_files if f.endswith(".h5")]
+    encoder_files = [f for f in repo_files if f.endswith(".pkl")]
+    return model_files, encoder_files
 
-    return pose_flat + left_hand_flat + right_hand_flat + face_flat + left_hand_angles + right_hand_angles
+model_files, encoder_files = get_model_files()
 
-def store_landmarks(landmarks):
-    """
-    Store landmarks in a thread-safe manner.
-    """
-    with lock:
-        landmark_queue.append(landmarks)
+selected_model_file = st.sidebar.selectbox("Select Model File", model_files)
+selected_encoder_file = st.sidebar.selectbox("Select Encoder File", encoder_files)
 
+if st.sidebar.button("Load Model & Encoder"):
+    with st.spinner("Loading model and encoder..."):
+        try:
+            model_path = hf_hub_download(MODEL_REPO_NAME, selected_model_file, repo_type="model", local_dir=LOCAL_MODEL_DIR, token=hf_token)
+            model = load_model(model_path)
+            encoder_path = hf_hub_download(MODEL_REPO_NAME, selected_encoder_file, repo_type="model", local_dir=LOCAL_MODEL_DIR, token=hf_token)
+            label_encoder = joblib.load(encoder_path)
+            st.session_state.model = model
+            st.session_state.label_encoder = label_encoder
+            st.session_state.model_loaded = True
+            st.sidebar.success("Model and Encoder loaded successfully!")
+        except Exception as e:
+            st.sidebar.error(f"Error loading model/encoder: {e}")
 
+# -----------------------------------
+# Video Streaming and Prediction UI
+# -----------------------------------
+if st.session_state.get("model_loaded", False):
+    if st.button("Start Video Stream"):
+        st.session_state.stream_active = True
 
- 
+    # Define video frame callback
+    def video_frame_callback(frame: av.VideoFrame) -> av.VideoFrame:
+        input_bgr = frame.to_ndarray(format="bgr24")
+        # Process the frame using MediaPipe
+        (annotated_image,
+         pose_data,
+         left_hand_data,
+         left_hand_angles,
+         right_hand_data,
+         right_hand_angles,
+         face_data) = process_frame(input_bgr)
+
+        # Flatten landmarks for prediction
+        row_data = flatten_landmarks(pose_data, left_hand_data, left_hand_angles, right_hand_data, right_hand_angles, face_data)
+
+        # Optionally store landmarks
+        if row_data and any(row_data):
+            store_landmarks(row_data)
+
+        # Prepare data for prediction: ensure it has the expected shape
+        # (Here we assume the model expects a 2D input; adjust if necessary.)
+        try:
+            input_data = np.array(row_data).reshape(1, -1)
+            prediction = st.session_state.model.predict(input_data)
+            predicted_class_index = np.argmax(prediction)
+            predicted_class = st.session_state.label_encoder.inverse_transform([predicted_class_index])[0]
+            st.session_state.recognized_action = predicted_class
+        except Exception as e:
+            st.session_state.recognized_action = f"Prediction error: {e}"
+
+        # Overlay recognized action text on the frame
+        cv2.putText(annotated_image, f"Action: {st.session_state.recognized_action}", (10, 30),
+                    cv2.FONT_HERSHEY_SIMPLEX, 1, (0, 255, 0), 2, cv2.LINE_AA)
+        return av.VideoFrame.from_ndarray(annotated_image, format="bgr24")
+
+    if st.session_state.get("stream_active", False):
+        webrtc_streamer(
+            key="gesture_streamer",
+            mode=WebRtcMode.SENDRECV,
+            media_stream_constraints={"video": True, "audio": False},
+            video_frame_callback=video_frame_callback,
+            async_processing=True,
+        )
+
+    st.subheader("Detected Action:")
+    st.write(st.session_state.get("recognized_action", "Waiting for prediction..."))
+else:
+    st.info("Please load a model and encoder from the sidebar to enable video streaming.")
