@@ -164,5 +164,18 @@ webrtc_ctx = webrtc_streamer(
     async_processing=True,
 )
 
-# Only process prediction if model is loaded
-if st.session_s
+# Only process prediction if model is loaded and stream is running
+if st.session_state.get("model_loaded", False) and webrtc_ctx and webrtc_ctx.state.playing:
+    st.subheader("Recognized Action:")
+    try:
+        row_data = np.zeros((1, 1000))  # Placeholder data, replace with actual processed frame data
+        prediction = st.session_state.model.predict(row_data)
+        predicted_index = np.argmax(prediction)
+        predicted_class = st.session_state.label_encoder.inverse_transform([predicted_index])[0]
+        st.session_state.recognized_action = predicted_class
+    except Exception as e:
+        st.session_state.recognized_action = f"Error: {e}"
+
+    st.write(st.session_state.get("recognized_action", "Waiting for prediction..."))
+else:
+    st.info("Please load a model and encoder from the sidebar to enable gesture prediction.")
