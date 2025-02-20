@@ -74,6 +74,8 @@ if "model_loaded" not in st.session_state:
     st.session_state.model_loaded = False
 if "recognized_action" not in st.session_state:
     st.session_state.recognized_action = "Waiting for prediction..."
+if "webrtc_key" not in st.session_state:
+    st.session_state.webrtc_key = "gesture_streamer"  # Static key to prevent reloading
 
 landmark_queue = st.session_state.landmark_queue
 lock = st.session_state.lock
@@ -88,11 +90,6 @@ holistic_model = mp_holistic.Holistic(
     min_tracking_confidence=0.5,
     static_image_mode=False
 )
-
-# -----------------------------------
-# WebRTC Stream Fix: Use a Unique Key
-# -----------------------------------
-streamer_key = f"gesture_streamer_{datetime.now().strftime('%H%M%S')}"
 
 # -----------------------------------
 # Video Processing Functions
@@ -156,7 +153,7 @@ if st.sidebar.button("Load Model & Encoder"):
 # Video Streaming and Prediction UI
 # -----------------------------------
 webrtc_ctx = webrtc_streamer(
-    key=streamer_key,
+    key=st.session_state.webrtc_key,  # Persistent key prevents reloading
     mode=WebRtcMode.SENDRECV,
     rtc_configuration={"iceServers": get_ice_servers(), "iceTransportPolicy": "relay"},
     media_stream_constraints={"video": True, "audio": False},
