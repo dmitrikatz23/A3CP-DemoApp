@@ -14,23 +14,28 @@ import cv2
 import av
 import streamlit as st
 import joblib
-from huggingface_hub import HfApi, hf_hub_download, Repository
-from streamlit_webrtc import WebRtcMode, webrtc_streamer, WebRtcStreamerContext
+from huggingface_hub import HfApi, hf_hub_download
+from streamlit_webrtc import WebRtcMode, webrtc_streamer
 from tensorflow.keras.models import load_model
 import mediapipe as mp
 
 # Optional: Append additional module paths if needed
 sys.path.append(str(Path(__file__).resolve().parent.parent))
 
-# Improved ICE server function
+# -----------------------------------
+# ICE Servers Function
+# -----------------------------------
 def get_ice_servers():
     return [
         {"urls": ["stun:stun.l.google.com:19302"]},
         {"urls": ["turn:relay1.expressturn.com:3478"], "username": "user", "credential": "pass"}
     ]
 
-# Logging configuration
+# -----------------------------------
+# Logging Configuration
+# -----------------------------------
 DEBUG_MODE = False  # Set to True for debugging
+
 def debug_log(message):
     if DEBUG_MODE:
         logging.debug(message)
@@ -58,7 +63,7 @@ if not hf_token:
     st.stop()
 hf_api = HfApi(token=hf_token)
 
-# Define repository details
+# Define repository details for model/encoder
 MODEL_REPO_NAME = "dk23/A3CP_models"
 LOCAL_MODEL_DIR = "local_models"
 os.makedirs(LOCAL_MODEL_DIR, exist_ok=True)
@@ -74,8 +79,15 @@ if "model_loaded" not in st.session_state:
     st.session_state.model_loaded = False
 if "recognized_action" not in st.session_state:
     st.session_state.recognized_action = "Waiting for prediction..."
-if "webrtc_key" not in st.session_state:
-    st.session_state.webrtc_key = "gesture_streamer"  # Static key to prevent reloading
+if "action_confirmed" not in st.session_state:
+    # For this example, we assume the action is confirmed by default.
+    st.session_state.action_confirmed = True
+if "active_streamer_key" not in st.session_state:
+    st.session_state.active_streamer_key = "gesture_streamer"  # Unique static key for this session
+if "streamer_running" not in st.session_state:
+    st.session_state.streamer_running = False
+if "action_word" not in st.session_state:
+    st.session_state.action_word = "Gesture"
 
 landmark_queue = st.session_state.landmark_queue
 lock = st.session_state.lock
@@ -95,7 +107,10 @@ holistic_model = mp_holistic.Holistic(
 # Video Processing Functions
 # -----------------------------------
 def process_frame(frame):
-    """Process a single frame using MediaPipe Holistic."""
+    """
+    Process a single frame using MediaPipe Holistic.
+    Draw landmarks on the frame and return the annotated image.
+    """
     image_rgb = cv2.cvtColor(frame, cv2.COLOR_BGR2RGB)
     results = holistic_model.process(image_rgb)
     annotated_image = cv2.cvtColor(image_rgb, cv2.COLOR_RGB2BGR)
@@ -113,7 +128,10 @@ def process_frame(frame):
     return annotated_image
 
 def video_frame_callback(frame: av.VideoFrame) -> av.VideoFrame:
-    """Callback function for WebRTC video streaming."""
+    """
+    Callback function for WebRTC video streaming.
+    Processes the frame and returns the annotated frame.
+    """
     input_bgr = frame.to_ndarray(format="bgr24")
     annotated_image = process_frame(input_bgr)
     return av.VideoFrame.from_ndarray(annotated_image, format="bgr24")
@@ -150,29 +168,51 @@ if st.sidebar.button("Load Model & Encoder"):
             st.sidebar.error(f"Error loading model/encoder: {e}")
 
 # -----------------------------------
-# Video Streaming and Prediction UI
+# Working WebRTC Streamer Code (from Record_Actions.py)
 # -----------------------------------
-webrtc_ctx = webrtc_streamer(
-    key=st.session_state.webrtc_key,  # Persistent key prevents reloading
-    mode=WebRtcMode.SENDRECV,
-    rtc_configuration={"iceServers": get_ice_servers(), "iceTransportPolicy": "relay"},
-    media_stream_constraints={"video": True, "audio": False},
-    video_frame_callback=video_frame_callback,
-    async_processing=True,
-)
+if st.session_state.get('action_confirmed', False):
+    streamer_key = st.session_state['active_streamer_key']
+    st.info(f"Streaming activated! Perform the action: {st.session_state.get('action_word', 'your action')}")
 
-# Only process prediction if model is loaded and stream is running
-if st.session_state.get("model_loaded", False) and webrtc_ctx and webrtc_ctx.state.playing:
+    # Launch the WebRTC streamer using the working snippet
+    webrtc_ctx = webrtc_streamer(
+        key=streamer_key,
+        mode=WebRtcMode.SENDRECV,
+        rtc_configuration={"iceServers": get_ice_servers(), "iceTransportPolicy": "relay"},
+        media_stream_constraints={"video": True, "audio": False},
+        video_frame_callback=video_frame_callback,
+        async_processing=True,
+    )
+
+    # Update streamer_running flag based on streamer state
+    if webrtc_ctx.state.playing:
+        st.session_state['streamer_running'] = True
+    else:
+        if st.session_state.get('streamer_running', False):
+            st.session_state['streamer_running'] = False
+            # Optionally, snapshot the landmark queue here if needed:
+            st.session_state["landmark_queue_snapshot"] = list(landmark_queue)
+            debug_log(f"Snapshot taken with {len(st.session_state['landmark_queue_snapshot'])} frames.")
+            st.success("Streaming has stopped. You can now save keyframes.")
+else:
+    st.info("Please confirm action to start streaming.")
+
+# -----------------------------------
+# Gesture Prediction Display
+# -----------------------------------
+# Process prediction only if a model is loaded and the stream is active.
+if st.session_state.get("model_loaded", False) and 'webrtc_ctx' in locals() and webrtc_ctx.state.playing:
     st.subheader("Recognized Action:")
     try:
-        row_data = np.zeros((1, 1000))  # Placeholder data, replace with actual processed frame data
+        # Here, row_data should be constructed from actual processed frame data.
+        # For demonstration purposes, we use a placeholder.
+        row_data = np.zeros((1, 1000))  # Replace with actual flattened landmark data
         prediction = st.session_state.model.predict(row_data)
         predicted_index = np.argmax(prediction)
         predicted_class = st.session_state.label_encoder.inverse_transform([predicted_index])[0]
         st.session_state.recognized_action = predicted_class
     except Exception as e:
         st.session_state.recognized_action = f"Error: {e}"
-
     st.write(st.session_state.get("recognized_action", "Waiting for prediction..."))
 else:
-    st.info("Please load a model and encoder from the sidebar to enable gesture prediction.")
+    st.info("Load a model and encoder from the sidebar to enable gesture prediction.")
