@@ -13,7 +13,7 @@ import streamlit as st
 import threading
 from streamlit_webrtc import WebRtcMode, webrtc_streamer
 from huggingface_hub import HfApi
-from sample_utils.turn import get_ice_servers  # Assumes this returns a valid ICE servers list
+from sample_utils.turn import get_ice_servers  # Assumes this returns a valid list of ICE servers
 
 # -----------------------------------
 # Page Configuration
@@ -22,11 +22,11 @@ st.set_page_config(page_title="TryIt", layout="wide")
 st.title("TryIt - Inference & Streaming Interface")
 
 # -----------------------------------
-# Hugging Face and Model/Encoder Pair Selection
+# Hugging Face Setup and Model/Encoder Pair Retrieval
 # -----------------------------------
 hf_token = os.getenv("Recorded_Datasets")
 if not hf_token:
-    st.error("Hugging Face token not found. Please ensure the 'Recorded_Datasets' secret is added in the Space settings.")
+    st.error("Hugging Face token not found. Please ensure the 'Recorded_Datasets' secret is added.")
     st.stop()
 
 api = HfApi()
@@ -37,7 +37,6 @@ def get_model_encoder_pairs():
     repo_files = api.list_repo_files(model_repo_name, repo_type="model", token=hf_token)
     model_files = [f for f in repo_files if f.endswith(".h5")]
     encoder_files = [f for f in repo_files if f.endswith(".pkl")]
-    
     # Build pairs based on timestamp extracted from filenames
     pairs = {}
     for mf in model_files:
@@ -57,7 +56,9 @@ def get_model_encoder_pairs():
 
 model_encoder_pairs = get_model_encoder_pairs()
 
-# Initialize session state for confirmation
+# -----------------------------------
+# Session State Initialization for Model Confirmation and Streamer Key
+# -----------------------------------
 if "model_confirmed" not in st.session_state:
     st.session_state["model_confirmed"] = False
 if "selected_pair" not in st.session_state:
@@ -66,38 +67,41 @@ if "active_streamer_key" not in st.session_state:
     st.session_state["active_streamer_key"] = None
 
 # -----------------------------------
-# Layout: Left and Right Columns
+# Model/Encoder Pair Selector (Displayed Below the Menu)
+# -----------------------------------
+st.markdown("### Select a Model/Encoder Pair")
+if not model_encoder_pairs:
+    st.warning("No valid model/encoder pairs found in the repository.")
+else:
+    pair_options = {}
+    for ts, model_file, encoder_file in model_encoder_pairs:
+        label = f"{ts} | Model: {model_file} | Encoder: {encoder_file}"
+        pair_options[label] = (model_file, encoder_file)
+    selected_label = st.selectbox("Model/Encoder Pair", list(pair_options.keys()))
+    st.write("**Selected Pair:**")
+    st.write(f"Model: `{pair_options[selected_label][0]}`")
+    st.write(f"Encoder: `{pair_options[selected_label][1]}`")
+    if st.button("Confirm Model"):
+        st.session_state["selected_pair"] = pair_options[selected_label]
+        key = f"tryit-stream-{re.sub(r'[^a-zA-Z0-9]', '_', selected_label)}"
+        st.session_state["active_streamer_key"] = key
+        st.session_state["model_confirmed"] = True
+        st.success("Model confirmed. The streamer will now appear below.")
+
+# -----------------------------------
+# Main Area Layout (Similar to RecordActions.py)
 # -----------------------------------
 left_col, right_col = st.columns([1, 2])
 
-# -----------------------------------
-# Left Column: Model Selection and Streaming
-# -----------------------------------
+# Left Column: (Optional Controls or Information)
 with left_col:
-    if not st.session_state["model_confirmed"]:
-        st.header("Select Model/Encoder Pair")
-        if not model_encoder_pairs:
-            st.warning("No valid model/encoder pairs found in the repository.")
-        else:
-            pair_options = {}
-            for ts, model_file, encoder_file in model_encoder_pairs:
-                label = f"{ts} | Model: {model_file} | Encoder: {encoder_file}"
-                pair_options[label] = (model_file, encoder_file)
-            selected_label = st.selectbox("Select a Model/Encoder Pair", list(pair_options.keys()))
-            st.write("**Selected Pair:**")
-            st.write(f"Model File: `{pair_options[selected_label][0]}`")
-            st.write(f"Encoder File: `{pair_options[selected_label][1]}`")
-            
-            if st.button("Confirm Model"):
-                st.session_state["selected_pair"] = pair_options[selected_label]
-                # Create a unique key for the streamer based on the selection
-                key = f"tryit-stream-{re.sub(r'[^a-zA-Z0-9]', '_', selected_label)}"
-                st.session_state["active_streamer_key"] = key
-                st.session_state["model_confirmed"] = True
-                st.success("Model confirmed! Streaming will now start.")
-    else:
-        st.header("Streaming")
-        # Launch the WebRTC streamer in the left column using the active key
+    st.header("Controls")
+    st.write("Additional controls or model information can appear here.")
+
+# Right Column: WebRTC Streamer Display
+with right_col:
+    st.header("Live Stream")
+    if st.session_state.get("model_confirmed", False) and st.session_state.get("active_streamer_key"):
         webrtc_ctx = webrtc_streamer(
             key=st.session_state["active_streamer_key"],
             mode=WebRtcMode.SENDRECV,
@@ -112,17 +116,11 @@ with left_col:
                     1,
                     (0, 255, 0),
                     2,
-                    cv2.LINE_AA,
+                    cv2.LINE_AA
                 ),
                 format="bgr24"
             ),
             async_processing=True,
         )
-
-# -----------------------------------
-# Right Column: Additional Interface or Output
-# -----------------------------------
-with right_col:
-    st.header("Try It Interface")
-    st.write("The selected model/encoder pair will be used for inference.")
-    # TODO: Add further inference or visualization logic here.
+    else:
+        st.info("Please select and confirm a model/encoder pair to start streaming.")
