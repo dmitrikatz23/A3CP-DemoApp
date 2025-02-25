@@ -57,55 +57,72 @@ def get_model_encoder_pairs():
 
 model_encoder_pairs = get_model_encoder_pairs()
 
-with st.sidebar:
-    st.header("Configuration")
-    if not model_encoder_pairs:
-        st.warning("No valid model/encoder pairs found in the repository.")
+# Initialize session state for confirmation
+if "model_confirmed" not in st.session_state:
+    st.session_state["model_confirmed"] = False
+if "selected_pair" not in st.session_state:
+    st.session_state["selected_pair"] = None
+if "active_streamer_key" not in st.session_state:
+    st.session_state["active_streamer_key"] = None
+
+# -----------------------------------
+# Layout: Left and Right Columns
+# -----------------------------------
+left_col, right_col = st.columns([1, 2])
+
+# -----------------------------------
+# Left Column: Model Selection and Streaming
+# -----------------------------------
+with left_col:
+    if not st.session_state["model_confirmed"]:
+        st.header("Select Model/Encoder Pair")
+        if not model_encoder_pairs:
+            st.warning("No valid model/encoder pairs found in the repository.")
+        else:
+            pair_options = {}
+            for ts, model_file, encoder_file in model_encoder_pairs:
+                label = f"{ts} | Model: {model_file} | Encoder: {encoder_file}"
+                pair_options[label] = (model_file, encoder_file)
+            selected_label = st.selectbox("Select a Model/Encoder Pair", list(pair_options.keys()))
+            st.write("**Selected Pair:**")
+            st.write(f"Model File: `{pair_options[selected_label][0]}`")
+            st.write(f"Encoder File: `{pair_options[selected_label][1]}`")
+            
+            if st.button("Confirm Model"):
+                st.session_state["selected_pair"] = pair_options[selected_label]
+                # Create a unique key for the streamer based on the selection
+                key = f"tryit-stream-{re.sub(r'[^a-zA-Z0-9]', '_', selected_label)}"
+                st.session_state["active_streamer_key"] = key
+                st.session_state["model_confirmed"] = True
+                st.success("Model confirmed! Streaming will now start.")
     else:
-        pair_options = {}
-        for ts, model_file, encoder_file in model_encoder_pairs:
-            label = f"{ts} | Model: {model_file} | Encoder: {encoder_file}"
-            pair_options[label] = (model_file, encoder_file)
-        selected_label = st.selectbox("Select a Model/Encoder Pair", list(pair_options.keys()))
-        selected_pair = pair_options[selected_label]
-        st.markdown("---")
-        st.write("**Selected Pair:**")
-        st.write(f"Model File: `{selected_pair[0]}`")
-        st.write(f"Encoder File: `{selected_pair[1]}`")
-    
-    # Button to trigger streaming
-    if st.button("Start Streaming"):
-        # Generate a unique key for the streamer based on the selected pair
-        key = f"tryit-stream-{re.sub(r'[^a-zA-Z0-9]', '_', selected_label)}"
-        st.session_state["active_streamer_key"] = key
-        st.success("Streaming activated!")
+        st.header("Streaming")
+        # Launch the WebRTC streamer in the left column using the active key
+        webrtc_ctx = webrtc_streamer(
+            key=st.session_state["active_streamer_key"],
+            mode=WebRtcMode.SENDRECV,
+            rtc_configuration={"iceServers": get_ice_servers(), "iceTransportPolicy": "relay"},
+            media_stream_constraints={"video": True, "audio": False},
+            video_frame_callback=lambda frame: av.VideoFrame.from_ndarray(
+                cv2.putText(
+                    frame.to_ndarray(format="bgr24"),
+                    "Streaming Active",
+                    (10, 30),
+                    cv2.FONT_HERSHEY_SIMPLEX,
+                    1,
+                    (0, 255, 0),
+                    2,
+                    cv2.LINE_AA,
+                ),
+                format="bgr24"
+            ),
+            async_processing=True,
+        )
 
 # -----------------------------------
-# Video Frame Callback for WebRTC Streamer
+# Right Column: Additional Interface or Output
 # -----------------------------------
-def video_frame_callback(frame: av.VideoFrame) -> av.VideoFrame:
-    # Convert the frame to BGR (as OpenCV uses BGR)
-    img = frame.to_ndarray(format="bgr24")
-    # (Optional) Add any inference or overlay here.
-    cv2.putText(img, "Streaming Active", (10, 30), 
-                cv2.FONT_HERSHEY_SIMPLEX, 1, (0, 255, 0), 2, cv2.LINE_AA)
-    return av.VideoFrame.from_ndarray(img, format="bgr24")
-
-# -----------------------------------
-# Open the WebRTC Streamer if Activated
-# -----------------------------------
-if st.session_state.get("active_streamer_key"):
-    webrtc_ctx = webrtc_streamer(
-        key=st.session_state["active_streamer_key"],
-        mode=WebRtcMode.SENDRECV,
-        rtc_configuration={"iceServers": get_ice_servers(), "iceTransportPolicy": "relay"},
-        media_stream_constraints={"video": True, "audio": False},
-        video_frame_callback=video_frame_callback,
-        async_processing=True,
-    )
-
-# -----------------------------------
-# Main Content Area
-# -----------------------------------
-st.write("### Try It Interface")
-st.write("Use the selected model/encoder pair for inference and streaming.")
+with right_col:
+    st.header("Try It Interface")
+    st.write("The selected model/encoder pair will be used for inference.")
+    # TODO: Add further inference or visualization logic here.
