@@ -19,8 +19,8 @@ dataset_repo_name = "dk23/A3CP_actions"  # Dataset repo containing CSVs
 model_repo_name = "dk23/A3CP_models"    # Model repo for saving the trained model
 
 # Local folder for temporary files
-data_path = "local_data"
-os.makedirs(data_path, exist_ok=True)
+LOCAL_DATASET_DIR = "local_data"
+os.makedirs(LOCAL_DATASET_DIR, exist_ok=True)
 
 st.title("Train Gesture Recognition Model")
 
