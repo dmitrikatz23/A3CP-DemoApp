@@ -1,123 +1,184 @@
-import streamlit as st
-import mediapipe as mp
-from streamlit_webrtc import WebRtcMode, webrtc_streamer, WebRtcStreamerContext
-import cv2
-import av
-import numpy as np
+import logging
+from pathlib import Path
 import threading
-import collections
-import tensorflow as tf
-import joblib
-from huggingface_hub import hf_hub_download, HfApi
+from collections import deque
 import os
 import re
+import numpy as np
+import cv2
+import av
+import streamlit as st
+from streamlit_webrtc import WebRtcMode, webrtc_streamer
+from huggingface_hub import HfApi, hf_hub_download
+import joblib
+import tensorflow as tf
 from tensorflow.keras.preprocessing.sequence import pad_sequences
 
-# -------------------------------------------------------
-# Page + Basic Config
-# -------------------------------------------------------
-st.set_page_config(page_title="TryIt", layout="wide")
-st.title("TryIt - Real-Time Gesture Inference")
+import mediapipe as mp
 
+# -------------------------------------------------------------------
+# Logging Setup (Optional Debugging)
+# -------------------------------------------------------------------
+DEBUG_MODE = False
+
+def debug_log(msg):
+    if DEBUG_MODE:
+        logging.info(msg)
+
+logging.basicConfig(
+    level=logging.DEBUG if DEBUG_MODE else logging.WARNING,
+    format="%(asctime)s [%(levelname)s] %(message)s",
+    handlers=[logging.StreamHandler()]
+)
+
+logger = logging.getLogger(__name__)
+logger.info("✅ Logging is initialized!")
+
+# -------------------------------------------------------------------
+# Page Configuration
+# -------------------------------------------------------------------
+st.set_page_config(page_title="TryIt - Thread-Safe Holistic", layout="wide")
+st.title("TryIt - Thread-Safe Holistic + Model Inference")
+
+# -------------------------------------------------------------------
+# Hugging Face Setup
+# -------------------------------------------------------------------
 hf_token = os.getenv("Recorded_Datasets")
 if not hf_token:
-    st.error("Hugging Face token not found. Please ensure it's set.")
+    st.error("Hugging Face token not found. Please set the 'Recorded_Datasets' secret.")
     st.stop()
 
-# -------------------------------------------------------
-# Lock + Session State
-# -------------------------------------------------------
-if "prediction_lock" not in st.session_state:
-    st.session_state.prediction_lock = threading.Lock()
+hf_api = HfApi()
+model_repo_name = "dk23/A3CP_models"
+LOCAL_MODEL_DIR = "local_models"
+os.makedirs(LOCAL_MODEL_DIR, exist_ok=True)
 
-if "current_prediction" not in st.session_state:
-    st.session_state.current_prediction = "Waiting..."
+# -------------------------------------------------------------------
+# Threading + Session State
+# -------------------------------------------------------------------
+# We replicate RecordActions.py style concurrency:
+if "lock" not in st.session_state:
+    st.session_state.lock = threading.Lock()
 
-# Optional: Keep a queue if you want a history of predictions
-if "prediction_queue" not in st.session_state:
-    st.session_state.prediction_queue = collections.deque(maxlen=1000)
+lock = st.session_state.lock
 
-# -------------------------------------------------------
-# MediaPipe Holistic Setup (like RecordActions.py)
-# -------------------------------------------------------
+# Store the final predicted text
+# (We only store the last predicted label, no queue needed)
+if "predicted_label" not in st.session_state:
+    st.session_state.predicted_label = "Waiting..."
+
+# -------------------------------------------------------------------
+# MediaPipe Holistic (Cached Resource)
+# -------------------------------------------------------------------
 mp_drawing = mp.solutions.drawing_utils
 mp_holistic = mp.solutions.holistic
 
 @st.cache_resource
-def load_holistic():
+def load_mediapipe_holistic():
     return mp_holistic.Holistic(
         min_detection_confidence=0.5,
         min_tracking_confidence=0.5,
         static_image_mode=False
     )
 
-holistic_model = load_holistic()
+holistic_model = load_mediapipe_holistic()
 
-def process_frame(frame_bgr):
-    """Process a single BGR frame with the Holistic model."""
-    img_rgb = cv2.cvtColor(frame_bgr, cv2.COLOR_BGR2RGB)
+# -------------------------------------------------------------------
+# Model + Encoder in Session State
+# -------------------------------------------------------------------
+if "tryit_model" not in st.session_state:
+    st.session_state.tryit_model = None
+if "tryit_encoder" not in st.session_state:
+    st.session_state.tryit_encoder = None
+
+# -------------------------------------------------------------------
+# Helper: Flatten Landmarks
+# -------------------------------------------------------------------
+def flatten_landmarks(results):
+    """
+    Flatten pose(33), left(21), right(21) => 75 landmarks x 3 coords = 225 values
+    If your model uses face landmarks, adapt accordingly.
+    """
+    def to_xyz(landmark_list, count):
+        if not landmark_list:
+            return [0.0, 0.0, 0.0] * count
+        return [coord for lm in landmark_list.landmark for coord in (lm.x, lm.y, lm.z)]
+    
+    pose_vals = to_xyz(results.pose_landmarks, 33)
+    left_vals = to_xyz(results.left_hand_landmarks, 21)
+    right_vals = to_xyz(results.right_hand_landmarks, 21)
+
+    merged = pose_vals + left_vals + right_vals
+    if len(merged) == 0:
+        return None  # No detection
+    return np.array(merged, dtype=np.float32)
+
+# -------------------------------------------------------------------
+# Video Callback - Thread-Safe (No st.* calls here)
+# -------------------------------------------------------------------
+def video_frame_callback(frame: av.VideoFrame) -> av.VideoFrame:
+    """
+    This is called in a separate thread (async_media_processor_X).
+    We do not call any st.* here to avoid "missing ScriptRunContext".
+    """
+    input_bgr = frame.to_ndarray(format="bgr24")
+    # Convert to RGB for MediaPipe
+    img_rgb = cv2.cvtColor(input_bgr, cv2.COLOR_BGR2RGB)
+
+    # Process with Holistic
     results = holistic_model.process(img_rgb)
 
-    # Draw the landmarks onto a copy for display
-    annotated = frame_bgr.copy()
+    # Annotate for display
+    annotated_image = input_bgr.copy()
     if results.pose_landmarks:
-        mp_drawing.draw_landmarks(annotated, results.pose_landmarks, mp_holistic.POSE_CONNECTIONS)
+        mp_drawing.draw_landmarks(annotated_image, results.pose_landmarks, mp_holistic.POSE_CONNECTIONS)
     if results.left_hand_landmarks:
-        mp_drawing.draw_landmarks(annotated, results.left_hand_landmarks, mp_holistic.HAND_CONNECTIONS)
+        mp_drawing.draw_landmarks(annotated_image, results.left_hand_landmarks, mp_holistic.HAND_CONNECTIONS)
     if results.right_hand_landmarks:
-        mp_drawing.draw_landmarks(annotated, results.right_hand_landmarks, mp_holistic.HAND_CONNECTIONS)
+        mp_drawing.draw_landmarks(annotated_image, results.right_hand_landmarks, mp_holistic.HAND_CONNECTIONS)
 
-    # Extract just the pose + hands. (Face optional if your model uses it.)
-    # For simplicity, assume your model wants 33 pose + 21 left + 21 right = 75 landmarks x 3 coords each = 225
-    # If your model expects more, adapt accordingly.
+    # Flatten
+    landmarks = flatten_landmarks(results)
+    if landmarks is not None:
+        # Predict if model + encoder loaded
+        model = st.session_state.tryit_model
+        encoder = st.session_state.tryit_encoder
+        if (model is not None) and (encoder is not None):
+            # Pad for LSTM
+            data = np.expand_dims(landmarks, axis=0)
+            data = pad_sequences([data], maxlen=100, padding='post', dtype='float32', value=-1.0)
 
-    def flatten_landmarks(landmark_list, count):
-        # Each landmark => (x, y, z)
-        if landmark_list:
-            return [coord for lm in landmark_list.landmark for coord in (lm.x, lm.y, lm.z)]
-        else:
-            return [0.0, 0.0, 0.0] * count
+            preds = model.predict(data)
+            label_idx = np.argmax(preds, axis=1)
+            pred_label = encoder.inverse_transform(label_idx)[0]
 
-    pose_data = flatten_landmarks(results.pose_landmarks, 33)
-    left_hand_data = flatten_landmarks(results.left_hand_landmarks, 21)
-    right_hand_data = flatten_landmarks(results.right_hand_landmarks, 21)
+            # Thread-safe store in session_state
+            with lock:
+                st.session_state.predicted_label = pred_label
 
-    # Merge them
-    full_landmarks = pose_data + left_hand_data + right_hand_data
-    if len(full_landmarks) == 0:
-        return annotated, None  # No detection
+    return av.VideoFrame.from_ndarray(annotated_image, format="bgr24")
 
-    return annotated, np.array(full_landmarks, dtype=np.float32)
-
-# -------------------------------------------------------
-# Model + Encoder
-# -------------------------------------------------------
-hf_api = HfApi()
-model_repo = "dk23/A3CP_models"
-LOCAL_MODEL_DIR = "local_models"
-os.makedirs(LOCAL_MODEL_DIR, exist_ok=True)
-
-if "loaded_model" not in st.session_state:
-    st.session_state.loaded_model = None
-if "loaded_encoder" not in st.session_state:
-    st.session_state.loaded_encoder = None
-
+# -------------------------------------------------------------------
+# Model/Encoder Selector (Like RecordActions approach)
+# -------------------------------------------------------------------
 @st.cache_data
-def list_model_pairs():
-    """List .h5 + .pkl from Hugging Face (like in RecordActions)."""
-    files = hf_api.list_repo_files(repo_id=model_repo, repo_type="model", token=hf_token)
+def get_model_encoder_pairs():
+    """Retrieve matched model/encoder pairs from HF."""
+    files = hf_api.list_repo_files(model_repo_name, repo_type="model", token=hf_token)
     model_files = [f for f in files if f.endswith(".h5")]
     encoder_files = [f for f in files if f.endswith(".pkl")]
+
     pairs = {}
-    # Match them by timestamp
     for mf in model_files:
         if mf.startswith("LSTM_model_") and mf.endswith(".h5"):
             ts = mf[len("LSTM_model_"):-3]
             pairs.setdefault(ts, {})["model"] = mf
+
     for ef in encoder_files:
         if ef.startswith("label_encoder_") and ef.endswith(".pkl"):
             ts = ef[len("label_encoder_"):-4]
             pairs.setdefault(ts, {})["encoder"] = ef
+
     valid = []
     for ts, item in pairs.items():
         if "model" in item and "encoder" in item:
@@ -125,86 +186,56 @@ def list_model_pairs():
     valid.sort(key=lambda x: x[0], reverse=True)
     return valid
 
-model_pairs = list_model_pairs()
+model_encoder_pairs = get_model_encoder_pairs()
 
-# -------------------------------------------------------
-# WebRTC Callback
-# -------------------------------------------------------
-def video_frame_callback(frame: av.VideoFrame) -> av.VideoFrame:
-    """This runs in a separate thread (async_media_processor_X). 
-       No direct Streamlit calls here to avoid missing ScriptRunContext."""
-    bgr = frame.to_ndarray(format="bgr24")
-
-    # 1) Process with Holistic
-    annotated, landmarks = process_frame(bgr)
-
-    # 2) If we have a loaded model + landmarks, do inference
-    model = st.session_state.loaded_model
-    encoder = st.session_state.loaded_encoder
-    if (model is not None) and (encoder is not None) and (landmarks is not None):
-        # Preprocess for LSTM
-        landmarks = np.expand_dims(landmarks, axis=0)  # shape (1, N)
-        # Our LSTM expects shape (batch, time=some_padding, features).
-        # So we wrap with pad_sequences
-        padded = pad_sequences([landmarks], maxlen=100, padding='post', value=-1.0, dtype='float32')
-        # Model predicts
-        preds = model.predict(padded)
-        label_idx = np.argmax(preds, axis=1)
-        pred_text = encoder.inverse_transform(label_idx)[0]
-
-        # 3) Save into session_state with a lock
-        with st.session_state.prediction_lock:
-            st.session_state.current_prediction = pred_text
-
-    return av.VideoFrame.from_ndarray(annotated, format="bgr24")
-
-# -------------------------------------------------------
-# Sidebar: Model Selection
-# -------------------------------------------------------
+# -------------------------------------------------------------------
+# Sidebar UI for Model Selection
+# -------------------------------------------------------------------
 with st.sidebar:
-    st.subheader("Model Selection")
-    if not model_pairs:
-        st.write("No .h5/.pkl pairs found.")
+    st.subheader("Select Model/Encoder from HF")
+
+    if not model_encoder_pairs:
+        st.warning("No .h5 + .pkl pairs found in the repo.")
     else:
-        labels = [f"{t} => {m} & {e}" for t, m, e in model_pairs]
-        choice = st.selectbox("Select Model/Encoder Pair:", labels)
-        if choice:
-            chosen_ts, chosen_model, chosen_encoder = None, None, None
-            for t, m, e in model_pairs:
-                label = f"{t} => {m} & {e}"
-                if label == choice:
-                    chosen_ts, chosen_model, chosen_encoder = t, m, e
-                    break
-            st.write(f"Chosen Model: {chosen_model}")
-            st.write(f"Chosen Encoder: {chosen_encoder}")
+        pair_dict = {}
+        for ts, mf, ef in model_encoder_pairs:
+            label = f"{ts} => {mf} & {ef}"
+            pair_dict[label] = (mf, ef)
 
-            if st.button("Load This Model"):
-                # Download if needed
-                model_path = os.path.join(LOCAL_MODEL_DIR, chosen_model)
-                enc_path = os.path.join(LOCAL_MODEL_DIR, chosen_encoder)
+        chosen_label = st.selectbox("Model/Encoder pairs:", list(pair_dict.keys()))
+        if chosen_label:
+            chosen_model, chosen_encoder = pair_dict[chosen_label]
+            st.write("**Chosen Model:**", chosen_model)
+            st.write("**Chosen Encoder:**", chosen_encoder)
 
-                if not os.path.exists(model_path):
-                    hf_hub_download(model_repo, chosen_model, local_dir=LOCAL_MODEL_DIR,
-                                    repo_type="model", token=hf_token)
-                if not os.path.exists(enc_path):
-                    hf_hub_download(model_repo, chosen_encoder, local_dir=LOCAL_MODEL_DIR,
-                                    repo_type="model", token=hf_token)
+        if st.button("Load Model & Encoder") and chosen_label:
+            model_path = os.path.join(LOCAL_MODEL_DIR, chosen_model)
+            encoder_path = os.path.join(LOCAL_MODEL_DIR, chosen_encoder)
 
-                # Load them
-                st.session_state.loaded_model = tf.keras.models.load_model(model_path)
-                st.session_state.loaded_encoder = joblib.load(enc_path)
-                st.success("Model & Encoder loaded!")
+            if not os.path.exists(model_path):
+                hf_hub_download(model_repo_name, chosen_model,
+                                local_dir=LOCAL_MODEL_DIR,
+                                repo_type="model", token=hf_token)
+            if not os.path.exists(encoder_path):
+                hf_hub_download(model_repo_name, chosen_encoder,
+                                local_dir=LOCAL_MODEL_DIR,
+                                repo_type="model", token=hf_token)
 
-# -------------------------------------------------------
-# Layout
-# -------------------------------------------------------
-left, right = st.columns([1, 2])
+            # Load them
+            st.session_state.tryit_model = tf.keras.models.load_model(model_path)
+            st.session_state.tryit_encoder = joblib.load(encoder_path)
 
-with left:
-    st.header("Real-Time Stream")
-    # No direct references to st.write in the callback => no ScriptRunContext error
+            st.success("Model + Encoder loaded successfully!")
+
+# -------------------------------------------------------------------
+# Main Layout
+# -------------------------------------------------------------------
+left_col, right_col = st.columns([1, 2])
+
+with left_col:
+    st.header("WebRTC Stream (Holistic)")
     webrtc_streamer(
-        key="tryit-livestream",
+        key="threadsafe-tryit-stream",
         mode=WebRtcMode.SENDRECV,
         rtc_configuration={"iceServers": [{"urls": ["stun:stun.l.google.com:19302"]}]},
         media_stream_constraints={"video": True, "audio": False},
@@ -212,8 +243,8 @@ with left:
         async_processing=True,
     )
 
-with right:
-    st.header("Predicted Gesture (Thread-Safe)")
-    # We read from session_state safely
-    pred_text = st.session_state.current_prediction
-    st.write(f"**Current Prediction:** {pred_text}")
+with right_col:
+    st.header("Predicted Gesture")
+    # We read from session_state (protected by lock in callback)
+    with lock:
+        st.write(f"**Current Prediction:** {st.session_state.predicted_label}")
