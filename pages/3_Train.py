@@ -145,19 +145,19 @@ if st.button("Train Model") and selected_csvs:
     joblib.dump(le, encoder_path)
 
     # Ensure the model repository exists; if not, create it
-    if not api.repo_exists(model_repo_name, repo_type="model", token=hf_token):
+    if not hf_api.repo_exists(model_repo_name, repo_type="model", token=hf_token):
         st.info(f"Repository '{model_repo_name}' not found. Creating it now...")
-        api.create_repo(repo_id=model_repo_name, repo_type="model", private=False, token=hf_token)
+        hf_api.create_repo(repo_id=model_repo_name, repo_type="model", private=False, token=hf_token)
 
     # Upload the files to the Hugging Face model repository
-    api.upload_file(
+    hf_api.upload_file(
         path_or_fileobj=model_path, 
         path_in_repo=model_filename, 
         repo_id=model_repo_name, 
         repo_type="model",
         token=hf_token
     )
-    api.upload_file(
+    hf_api.upload_file(
         path_or_fileobj=encoder_path, 
         path_in_repo=encoder_filename, 
         repo_id=model_repo_name, 
