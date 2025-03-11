@@ -31,13 +31,16 @@ if not hf_token:
     st.stop()
 
 # Initialize Hugging Face API
-api = HfApi()
+hf_api = HfApi()
 
 # Fetch available CSV files from the dataset repository
-@st.cache_data
 def get_csv_files():
-    repo_files = api.list_repo_files(dataset_repo_name, repo_type="dataset", token=hf_token)
-    return [f for f in repo_files if f.endswith(".csv")]
+    try:
+        repo_files = hf_api.list_repo_files(HF_REPO_NAME, repo_type="dataset", token=hf_token)
+        return sorted([f for f in repo_files if f.endswith(".csv")], reverse=True)
+    except Exception as e:
+        st.error(f"Error fetching dataset files: {e}")
+        return []
 
 csv_files = get_csv_files()
 selected_csvs = st.multiselect("Select CSV files for training:", csv_files)
@@ -45,13 +48,22 @@ selected_csvs = st.multiselect("Select CSV files for training:", csv_files)
 if st.button("Download Selected CSVs"):
     downloaded_files = []
     for csv in selected_csvs:
-        file_path = hf_hub_download(dataset_repo_name, csv, repo_type="dataset", local_dir=data_path, token=hf_token)
-        downloaded_files.append(file_path)
-    st.success(f"Downloaded {len(downloaded_files)} files!")
+        local_csv_path = os.path.join(LOCAL_DATASET_DIR, csv)
+        
+        if not os.path.exists(local_csv_path):  # Avoid redundant downloads
+            with st.spinner(f"Downloading {csv}..."):
+                file_path = hf_hub_download(HF_REPO_NAME, csv, repo_type="dataset", local_dir=LOCAL_DATASET_DIR, token=hf_token)
+                downloaded_files.append(file_path)
+        else:
+            st.info(f"{csv} already exists locally.")
+
+    st.success(f"Downloaded {len(downloaded_files)} new files!")
+
 
 if st.button("Train Model") and selected_csvs:
     # Read and combine CSVs into one DataFrame
-    all_dataframes = [pd.read_csv(os.path.join(data_path, os.path.basename(csv))) for csv in selected_csvs]
+    #all_dataframes = [pd.read_csv(os.path.join(data_path, os.path.basename(csv))) for csv in selected_csvs]
+    all_dataframes = [pd.read_csv(os.path.join(LOCAL_DATASET_DIR, csv)) for csv in selected_csvs]
     df = pd.concat(all_dataframes, ignore_index=True)
 
     # Create a unique identifier per sequence
