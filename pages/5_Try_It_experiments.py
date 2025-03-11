@@ -10,6 +10,7 @@ import re
 import os
 import joblib
 import tensorflow as tf
+from tensorflow import keras
 from tensorflow.keras.preprocessing.sequence import pad_sequences
 from huggingface_hub import hf_hub_download, HfApi
 
