@@ -44,29 +44,25 @@ holistic_model = load_mediapipe_model()
 mp_drawing = mp.solutions.drawing_utils  # Drawing helper
 
 # -----------------------------
+# Initialize Session State for Debugging Holistic
+# -----------------------------
+if "holistic_status" not in st.session_state:
+    st.session_state["holistic_status"] = {"pose": False, "left_hand": False, "right_hand": False}
+
+# -----------------------------
 # Helper Function: Extract Landmarks from Frame
 # -----------------------------
 def extract_landmarks(image):
-    """Extract holistic landmarks from an image and log detection status."""
+    """Extract holistic landmarks from an image and store detection status in session state."""
     image_rgb = cv2.cvtColor(image, cv2.COLOR_BGR2RGB)
     results = holistic_model.process(image_rgb)
 
-    # Debugging: Show detection status in Streamlit
-    st.sidebar.text("Holistic Processing Status:")
-    if results.pose_landmarks:
-        st.sidebar.success("✅ Pose Landmarks Detected")
-    else:
-        st.sidebar.warning("⚠️ No Pose Landmarks Detected")
-
-    if results.left_hand_landmarks:
-        st.sidebar.success("✅ Left Hand Detected")
-    else:
-        st.sidebar.warning("⚠️ No Left Hand Detected")
-
-    if results.right_hand_landmarks:
-        st.sidebar.success("✅ Right Hand Detected")
-    else:
-        st.sidebar.warning("⚠️ No Right Hand Detected")
+    # Store detection status in session state (no direct Streamlit calls here)
+    st.session_state["holistic_status"] = {
+        "pose": bool(results.pose_landmarks),
+        "left_hand": bool(results.left_hand_landmarks),
+        "right_hand": bool(results.right_hand_landmarks),
+    }
 
     # If no landmarks detected, return None
     if not results.pose_landmarks and not results.left_hand_landmarks and not results.right_hand_landmarks:
@@ -111,7 +107,7 @@ def video_frame_callback(frame: av.VideoFrame) -> av.VideoFrame:
             predicted_label = np.argmax(predictions, axis=1)
             predicted_text = encoder.inverse_transform(predicted_label)[0]
 
-            # Store in session state for UI display
+            # Store prediction in session state
             st.session_state["tryit_predicted_text"] = predicted_text
             cv2.putText(img_bgr, f"Prediction: {predicted_text}", (10, 50), cv2.FONT_HERSHEY_SIMPLEX, 1, (0, 255, 0), 2)
         else:
@@ -128,57 +124,13 @@ def video_frame_callback(frame: av.VideoFrame) -> av.VideoFrame:
     return av.VideoFrame.from_ndarray(img_bgr, format="bgr24")
 
 # -----------------------------
-# Sidebar: Model Selection
+# Sidebar: Model Selection and Holistic Debugging
 # -----------------------------
-@st.cache_data
-def get_model_encoder_pairs():
-    """Retrieve matched model/encoder pairs from Hugging Face."""
-    repo_files = hf_api.list_repo_files(model_repo_name, repo_type="model", token=hf_token)
-    model_files = [f for f in repo_files if f.endswith(".h5")]
-    encoder_files = [f for f in repo_files if f.endswith(".pkl")]
-
-    pairs = {}
-    for mf in model_files:
-        ts = mf[len("LSTM_model_"):-3]  # Extract timestamp
-        pairs.setdefault(ts, {})["model"] = mf
-    for ef in encoder_files:
-        ts = ef[len("label_encoder_"):-4]  # Extract timestamp
-        pairs.setdefault(ts, {})["encoder"] = ef
-
-    valid_pairs = [(ts, items["model"], items["encoder"]) for ts, items in pairs.items() if "model" in items and "encoder" in items]
-    valid_pairs.sort(key=lambda x: x[0], reverse=True)
-    return valid_pairs
-
-model_encoder_pairs = get_model_encoder_pairs()
-
 with st.sidebar:
-    st.subheader("Select a Model/Encoder Pair")
-    if not model_encoder_pairs:
-        st.warning("No valid model/encoder pairs found.")
-    else:
-        pair_options = {f"{ts} | Model: {mf} | Encoder: {ef}": (mf, ef) for ts, mf, ef in model_encoder_pairs}
-        selected_label = st.selectbox("Choose a matched pair:", list(pair_options.keys()))
-
-        if selected_label:
-            chosen_model, chosen_encoder = pair_options[selected_label]
-            st.write("**Selected Model:**", chosen_model)
-            st.write("**Selected Encoder:**", chosen_encoder)
-
-        if st.button("Confirm Model") and selected_label:
-            st.session_state["tryit_selected_pair"] = pair_options[selected_label]
-            st.session_state["tryit_model_confirmed"] = True
-
-            model_path = os.path.join(LOCAL_MODEL_DIR, chosen_model)
-            encoder_path = os.path.join(LOCAL_MODEL_DIR, chosen_encoder)
-
-            if not os.path.exists(model_path):
-                hf_hub_download(model_repo_name, chosen_model, local_dir=LOCAL_MODEL_DIR, repo_type="model", token=hf_token)
-            if not os.path.exists(encoder_path):
-                hf_hub_download(model_repo_name, chosen_encoder, local_dir=LOCAL_MODEL_DIR, repo_type="model", token=hf_token)
-
-            st.session_state["tryit_model"] = tf.keras.models.load_model(model_path)
-            st.session_state["tryit_encoder"] = joblib.load(encoder_path)
-            st.success("Model and encoder loaded successfully!")
+    st.subheader("Holistic Detection Status")
+    st.text(f"Pose Landmarks: {'✅' if st.session_state['holistic_status']['pose'] else '❌'}")
+    st.text(f"Left Hand: {'✅' if st.session_state['holistic_status']['left_hand'] else '❌'}")
+    st.text(f"Right Hand: {'✅' if st.session_state['holistic_status']['right_hand'] else '❌'}")
 
 # -----------------------------
 # Main Layout
@@ -187,15 +139,14 @@ left_col, right_col = st.columns([1, 2])
 
 with left_col:
     st.header("WebRTC Stream")
-    if st.session_state.get("tryit_model_confirmed"):
-        webrtc_streamer(
-            key="tryit-stream",
-            mode=WebRtcMode.SENDRECV,
-            rtc_configuration={"iceServers": [{"urls": ["stun:stun.l.google.com:19302"]}]},
-            media_stream_constraints={"video": True, "audio": False},
-            video_frame_callback=video_frame_callback,
-            async_processing=True,
-        )
+    webrtc_streamer(
+        key="tryit-stream",
+        mode=WebRtcMode.SENDRECV,
+        rtc_configuration={"iceServers": [{"urls": ["stun:stun.l.google.com:19302"]}]},
+        media_stream_constraints={"video": True, "audio": False},
+        video_frame_callback=video_frame_callback,
+        async_processing=True,
+    )
 
 with right_col:
     st.header("Predicted Gesture")
