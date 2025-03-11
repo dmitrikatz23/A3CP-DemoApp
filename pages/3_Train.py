@@ -79,7 +79,7 @@ if st.button("Train Model") and selected_csvs:
     df = pd.concat(all_dataframes, ignore_index=True)
 
     # Create a unique identifier per sequence
-    df['unique_id'] = df['class'] + '_' + df['sequence_id'].astype(str)
+    df['unique_id'] = df['class'] + '_' + df['sequence_id'].apply(str)
     unique_ids = df['unique_id'].unique()
 
     sequences, labels = [], []
