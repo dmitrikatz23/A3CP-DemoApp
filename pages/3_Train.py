@@ -36,7 +36,7 @@ hf_api = HfApi()
 # Fetch available CSV files from the dataset repository
 def get_csv_files():
     try:
-        repo_files = hf_api.list_repo_files(HF_REPO_NAME, repo_type="dataset", token=hf_token)
+        repo_files = hf_api.list_repo_files(dataset_repo_name, repo_type="dataset", token=hf_token)
         return sorted([f for f in repo_files if f.endswith(".csv")], reverse=True)
     except Exception as e:
         st.error(f"Error fetching dataset files: {e}")
@@ -52,7 +52,7 @@ if st.button("Download Selected CSVs"):
         
         if not os.path.exists(local_csv_path):  # Avoid redundant downloads
             with st.spinner(f"Downloading {csv}..."):
-                file_path = hf_hub_download(HF_REPO_NAME, csv, repo_type="dataset", local_dir=LOCAL_DATASET_DIR, token=hf_token)
+                file_path = hf_hub_download(dataset_repo_name, csv, repo_type="dataset", local_dir=LOCAL_DATASET_DIR, token=hf_token)
                 downloaded_files.append(file_path)
         else:
             st.info(f"{csv} already exists locally.")
