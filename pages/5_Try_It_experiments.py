@@ -37,8 +37,7 @@ os.makedirs(LOCAL_MODEL_DIR, exist_ok=True)
 def load_mediapipe_model():
     return mp.solutions.holistic.Holistic(
         min_detection_confidence=0.5,
-        min_tracking_confidence=0.5,
-        static_image_mode=False
+        min_tracking_confidence=0.5
     )
 
 holistic_model = load_mediapipe_model()
@@ -48,9 +47,30 @@ mp_drawing = mp.solutions.drawing_utils  # Drawing helper
 # Helper Function: Extract Landmarks from Frame
 # -----------------------------
 def extract_landmarks(image):
-    """Extract holistic landmarks from an image."""
+    """Extract holistic landmarks from an image and log detection status."""
     image_rgb = cv2.cvtColor(image, cv2.COLOR_BGR2RGB)
     results = holistic_model.process(image_rgb)
+
+    # Debugging: Show detection status in Streamlit
+    st.sidebar.text("Holistic Processing Status:")
+    if results.pose_landmarks:
+        st.sidebar.success("✅ Pose Landmarks Detected")
+    else:
+        st.sidebar.warning("⚠️ No Pose Landmarks Detected")
+
+    if results.left_hand_landmarks:
+        st.sidebar.success("✅ Left Hand Detected")
+    else:
+        st.sidebar.warning("⚠️ No Left Hand Detected")
+
+    if results.right_hand_landmarks:
+        st.sidebar.success("✅ Right Hand Detected")
+    else:
+        st.sidebar.warning("⚠️ No Right Hand Detected")
+
+    # If no landmarks detected, return None
+    if not results.pose_landmarks and not results.left_hand_landmarks and not results.right_hand_landmarks:
+        return None, results  
 
     landmarks = []
     
@@ -65,7 +85,7 @@ def extract_landmarks(image):
     append_landmarks(results.left_hand_landmarks, 21)  # Left Hand: 21 points
     append_landmarks(results.right_hand_landmarks, 21)  # Right Hand: 21 points
 
-    return np.array(landmarks, dtype=np.float32) if landmarks else None, results
+    return np.array(landmarks, dtype=np.float32), results
 
 # -----------------------------
 # WebRTC Frame Callback for Inference
@@ -156,7 +176,6 @@ with st.sidebar:
             if not os.path.exists(encoder_path):
                 hf_hub_download(model_repo_name, chosen_encoder, local_dir=LOCAL_MODEL_DIR, repo_type="model", token=hf_token)
 
-            # Load Model & Encoder
             st.session_state["tryit_model"] = tf.keras.models.load_model(model_path)
             st.session_state["tryit_encoder"] = joblib.load(encoder_path)
             st.success("Model and encoder loaded successfully!")
