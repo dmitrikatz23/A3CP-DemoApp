@@ -137,8 +137,8 @@ if st.button("Train Model") and selected_csvs:
     model_filename = f"LSTM_model_{timestamp}.h5"
     encoder_filename = f"label_encoder_{timestamp}.pkl"
     
-    model_path = os.path.join(data_path, model_filename)
-    encoder_path = os.path.join(data_path, encoder_filename)
+    model_path = os.path.join(LOCAL_DATASET_DIR, model_filename)
+    encoder_path = os.path.join(LOCAL_DATASET_DIR, encoder_filename)
     
     # Save model and encoder locally
     model.save(model_path)
