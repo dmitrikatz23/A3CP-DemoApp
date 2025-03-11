@@ -47,17 +47,29 @@ selected_csvs = st.multiselect("Select CSV files for training:", csv_files)
 
 if st.button("Download Selected CSVs"):
     downloaded_files = []
+    missing_files = []
+    
     for csv in selected_csvs:
         local_csv_path = os.path.join(LOCAL_DATASET_DIR, csv)
-        
+
         if not os.path.exists(local_csv_path):  # Avoid redundant downloads
             with st.spinner(f"Downloading {csv}..."):
-                file_path = hf_hub_download(dataset_repo_name, csv, repo_type="dataset", local_dir=LOCAL_DATASET_DIR, token=hf_token)
-                downloaded_files.append(file_path)
+                try:
+                    file_path = hf_hub_download(dataset_repo_name, csv, repo_type="dataset", local_dir=LOCAL_DATASET_DIR, token=hf_token)
+                    downloaded_files.append(file_path)
+                except Exception as e:
+                    missing_files.append(csv)
+                    st.error(f"Failed to download {csv}: {e}")
+
         else:
             st.info(f"{csv} already exists locally.")
 
-    st.success(f"Downloaded {len(downloaded_files)} new files!")
+    if downloaded_files:
+        st.success(f"Successfully downloaded {len(downloaded_files)} files!")
+    
+    if missing_files:
+        st.error(f"Failed to download the following files: {missing_files}. Check if they exist in the Hugging Face repo.")
+
 
 
 if st.button("Train Model") and selected_csvs:
