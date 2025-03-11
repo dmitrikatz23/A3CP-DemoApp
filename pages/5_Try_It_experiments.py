@@ -52,11 +52,6 @@ def extract_landmarks(image):
     image_rgb = cv2.cvtColor(image, cv2.COLOR_BGR2RGB)
     results = holistic_model.process(image_rgb)
 
-    # Check if Holistic model detects anything
-    if not results.pose_landmarks and not results.left_hand_landmarks and not results.right_hand_landmarks:
-        st.warning("⚠️ No landmarks detected in frame!")
-        return None, results  # Return empty array
-
     landmarks = []
     
     def append_landmarks(landmark_list, count):
@@ -70,7 +65,7 @@ def extract_landmarks(image):
     append_landmarks(results.left_hand_landmarks, 21)  # Left Hand: 21 points
     append_landmarks(results.right_hand_landmarks, 21)  # Right Hand: 21 points
 
-    return np.array(landmarks, dtype=np.float32), results
+    return np.array(landmarks, dtype=np.float32) if landmarks else None, results
 
 # -----------------------------
 # WebRTC Frame Callback for Inference
@@ -150,4 +145,39 @@ with st.sidebar:
             st.write("**Selected Encoder:**", chosen_encoder)
 
         if st.button("Confirm Model") and selected_label:
-            st
+            st.session_state["tryit_selected_pair"] = pair_options[selected_label]
+            st.session_state["tryit_model_confirmed"] = True
+
+            model_path = os.path.join(LOCAL_MODEL_DIR, chosen_model)
+            encoder_path = os.path.join(LOCAL_MODEL_DIR, chosen_encoder)
+
+            if not os.path.exists(model_path):
+                hf_hub_download(model_repo_name, chosen_model, local_dir=LOCAL_MODEL_DIR, repo_type="model", token=hf_token)
+            if not os.path.exists(encoder_path):
+                hf_hub_download(model_repo_name, chosen_encoder, local_dir=LOCAL_MODEL_DIR, repo_type="model", token=hf_token)
+
+            # Load Model & Encoder
+            st.session_state["tryit_model"] = tf.keras.models.load_model(model_path)
+            st.session_state["tryit_encoder"] = joblib.load(encoder_path)
+            st.success("Model and encoder loaded successfully!")
+
+# -----------------------------
+# Main Layout
+# -----------------------------
+left_col, right_col = st.columns([1, 2])
+
+with left_col:
+    st.header("WebRTC Stream")
+    if st.session_state.get("tryit_model_confirmed"):
+        webrtc_streamer(
+            key="tryit-stream",
+            mode=WebRtcMode.SENDRECV,
+            rtc_configuration={"iceServers": [{"urls": ["stun:stun.l.google.com:19302"]}]},
+            media_stream_constraints={"video": True, "audio": False},
+            video_frame_callback=video_frame_callback,
+            async_processing=True,
+        )
+
+with right_col:
+    st.header("Predicted Gesture")
+    st.write(f"**Prediction:** {st.session_state.get('tryit_predicted_text', 'Waiting for input...')}")  
