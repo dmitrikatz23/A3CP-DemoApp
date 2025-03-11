@@ -1,18 +1,15 @@
-import logging
-from pathlib import Path
 import mediapipe as mp
 import av
 import cv2
 import numpy as np
 import streamlit as st
-from streamlit_webrtc import WebRtcMode, webrtc_streamer, WebRtcStreamerContext
-import re
-import os
-import joblib
+from streamlit_webrtc import WebRtcMode, webrtc_streamer
 import tensorflow as tf
-from tensorflow import keras
+import joblib
 from tensorflow.keras.preprocessing.sequence import pad_sequences
 from huggingface_hub import hf_hub_download, HfApi
+import os
+import re
 
 # -----------------------------
 # Page Configuration
@@ -29,13 +26,52 @@ if not hf_token:
     st.stop()
 
 hf_api = HfApi()
-model_repo_name = "dk23/A3CP_models"  # Repository with models and encoders
-LOCAL_DATASET_DIR = "local_models"
-os.makedirs(LOCAL_DATASET_DIR, exist_ok=True)
+model_repo_name = "dk23/A3CP_models"
+LOCAL_MODEL_DIR = "local_models"
+os.makedirs(LOCAL_MODEL_DIR, exist_ok=True)
 
+# -----------------------------
+# Load MediaPipe Holistic Model (Cached)
+# -----------------------------
+@st.cache_resource
+def load_mediapipe_model():
+    return mp.solutions.holistic.Holistic(
+        min_detection_confidence=0.5,
+        min_tracking_confidence=0.5,
+        static_image_mode=False
+    )
+
+holistic_model = load_mediapipe_model()
+
+# -----------------------------
+# Helper Function: Extract Landmarks from Frame
+# -----------------------------
+def extract_landmarks(image):
+    """Extract holistic landmarks from an image."""
+    image_rgb = cv2.cvtColor(image, cv2.COLOR_BGR2RGB)
+    results = holistic_model.process(image_rgb)
+    
+    landmarks = []
+
+    def append_landmarks(landmark_list):
+        if landmark_list:
+            for lm in landmark_list.landmark:
+                landmarks.extend([lm.x, lm.y, lm.z])
+        else:
+            landmarks.extend([0.0, 0.0, 0.0] * 33)  # Placeholder for missing landmarks
+
+    append_landmarks(results.pose_landmarks)
+    append_landmarks(results.left_hand_landmarks)
+    append_landmarks(results.right_hand_landmarks)
+
+    return np.array(landmarks, dtype=np.float32) if landmarks else None
+
+# -----------------------------
+# Load Model & Encoder from Hugging Face
+# -----------------------------
 @st.cache_data
 def get_model_encoder_pairs():
-    """Retrieve matched model/encoder pairs from the HF repo."""
+    """Retrieve matched model/encoder pairs from Hugging Face."""
     repo_files = hf_api.list_repo_files(model_repo_name, repo_type="model", token=hf_token)
     model_files = [f for f in repo_files if f.endswith(".h5")]
     encoder_files = [f for f in repo_files if f.endswith(".pkl")]
@@ -55,25 +91,7 @@ def get_model_encoder_pairs():
 model_encoder_pairs = get_model_encoder_pairs()
 
 # -----------------------------
-# Session State
-# -----------------------------
-if "tryit_model_confirmed" not in st.session_state:
-    st.session_state["tryit_model_confirmed"] = False
-if "tryit_selected_pair" not in st.session_state:
-    st.session_state["tryit_selected_pair"] = None
-if "tryit_streamer_key" not in st.session_state:
-    st.session_state["tryit_streamer_key"] = None
-if "tryit_streamer_running" not in st.session_state:
-    st.session_state["tryit_streamer_running"] = False
-if "tryit_model" not in st.session_state:
-    st.session_state["tryit_model"] = None
-if "tryit_encoder" not in st.session_state:
-    st.session_state["tryit_encoder"] = None
-if "tryit_predicted_text" not in st.session_state:
-    st.session_state["tryit_predicted_text"] = "Waiting for input..."
-
-# -----------------------------
-# Sidebar: Model/Encoder Selector
+# Sidebar: Model Selection
 # -----------------------------
 with st.sidebar:
     st.subheader("Select a Model/Encoder Pair")
@@ -90,17 +108,15 @@ with st.sidebar:
 
         if st.button("Confirm Model") and selected_label:
             st.session_state["tryit_selected_pair"] = pair_options[selected_label]
-            st.session_state["tryit_streamer_key"] = f"tryit-stream-{re.sub(r'[^a-zA-Z0-9]', '_', selected_label)}"
             st.session_state["tryit_model_confirmed"] = True
 
-            # Download model and encoder if not already saved
-            model_path = os.path.join(LOCAL_DATASET_DIR, chosen_model)
-            encoder_path = os.path.join(LOCAL_DATASET_DIR, chosen_encoder)
+            model_path = os.path.join(LOCAL_MODEL_DIR, chosen_model)
+            encoder_path = os.path.join(LOCAL_MODEL_DIR, chosen_encoder)
 
             if not os.path.exists(model_path):
-                hf_hub_download(model_repo_name, chosen_model, local_dir=LOCAL_DATASET_DIR, repo_type="model", token=hf_token)
+                hf_hub_download(model_repo_name, chosen_model, local_dir=LOCAL_MODEL_DIR, repo_type="model", token=hf_token)
             if not os.path.exists(encoder_path):
-                hf_hub_download(model_repo_name, chosen_encoder, local_dir=LOCAL_DATASET_DIR, repo_type="model", token=hf_token)
+                hf_hub_download(model_repo_name, chosen_encoder, local_dir=LOCAL_MODEL_DIR, repo_type="model", token=hf_token)
 
             # Load Model & Encoder
             st.session_state["tryit_model"] = tf.keras.models.load_model(model_path)
@@ -108,56 +124,35 @@ with st.sidebar:
             st.success("Model and encoder loaded successfully!")
 
 # -----------------------------
-# MediaPipe Holistic Model
-# -----------------------------
-mp_holistic = mp.solutions.holistic
-holistic = mp_holistic.Holistic(min_detection_confidence=0.5, min_tracking_confidence=0.5)
-
-def extract_landmarks(image):
-    """Extract holistic landmarks from an image."""
-    image_rgb = cv2.cvtColor(image, cv2.COLOR_BGR2RGB)
-    results = holistic.process(image_rgb)
-    
-    landmarks = []
-    
-    def append_landmarks(landmark_list):
-        if landmark_list:
-            for lm in landmark_list.landmark:
-                landmarks.extend([lm.x, lm.y, lm.z])
-        else:
-            landmarks.extend([0.0, 0.0, 0.0] * len(landmark_list.landmark))
-
-    append_landmarks(results.pose_landmarks)
-    append_landmarks(results.left_hand_landmarks)
-    append_landmarks(results.right_hand_landmarks)
-
-    return np.array(landmarks, dtype=np.float32) if landmarks else None
-
-# -----------------------------
 # WebRTC Frame Callback for Inference
 # -----------------------------
 def video_frame_callback(frame: av.VideoFrame) -> av.VideoFrame:
     """Process frame for real-time gesture prediction."""
     img_bgr = frame.to_ndarray(format="bgr24")
-    
-    if st.session_state["tryit_model"] and st.session_state["tryit_encoder"]:
-        landmarks = extract_landmarks(img_bgr)
 
+    if "tryit_model" in st.session_state and "tryit_encoder" in st.session_state:
+        model = st.session_state["tryit_model"]
+        encoder = st.session_state["tryit_encoder"]
+
+        landmarks = extract_landmarks(img_bgr)
         if landmarks is not None:
             # Preprocess input
             landmarks = np.expand_dims(landmarks, axis=0)
             landmarks = pad_sequences([landmarks], maxlen=100, padding='post', dtype='float32', value=-1.0)
 
-            # Predict
-            predictions = st.session_state["tryit_model"].predict(landmarks)
+            # Predict gesture
+            predictions = model.predict(landmarks)
             predicted_label = np.argmax(predictions, axis=1)
-            predicted_text = st.session_state["tryit_encoder"].inverse_transform(predicted_label)[0]
+            predicted_text = encoder.inverse_transform(predicted_label)[0]
 
-            # Update Streamlit session state
+            # Display prediction on video
+            cv2.putText(img_bgr, f"Prediction: {predicted_text}", (10, 50), cv2.FONT_HERSHEY_SIMPLEX, 1, (0, 255, 0), 2)
+
+            # Store in session state for right column display
             st.session_state["tryit_predicted_text"] = predicted_text
+        else:
+            st.session_state["tryit_predicted_text"] = "No Gesture Detected"
 
-    cv2.putText(img_bgr, st.session_state["tryit_predicted_text"], (10, 50), cv2.FONT_HERSHEY_SIMPLEX, 1, (0, 255, 0), 2)
-    
     return av.VideoFrame.from_ndarray(img_bgr, format="bgr24")
 
 # -----------------------------
@@ -167,9 +162,9 @@ left_col, right_col = st.columns([1, 2])
 
 with left_col:
     st.header("WebRTC Stream")
-    if st.session_state["tryit_model_confirmed"]:
+    if st.session_state.get("tryit_model_confirmed"):
         webrtc_streamer(
-            key=st.session_state["tryit_streamer_key"],
+            key="tryit-stream",
             mode=WebRtcMode.SENDRECV,
             rtc_configuration={"iceServers": [{"urls": ["stun:stun.l.google.com:19302"]}]},
             media_stream_constraints={"video": True, "audio": False},
@@ -179,4 +174,4 @@ with left_col:
 
 with right_col:
     st.header("Predicted Gesture")
-    st.write(f"**Prediction:** {st.session_state['tryit_predicted_text']}")  
+    st.write(f"**Prediction:** {st.session_state.get('tryit_predicted_text', 'Waiting for input...')}")  

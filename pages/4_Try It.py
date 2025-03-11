@@ -2,7 +2,9 @@
 # button to start the streamer
 # uses holistic model to vectorize gestures
 # uses chosen model to predict the meaning of gesture
-# displays the predicted gesture
+# displays the predicted gesture in realtime as text
+# on the right, display the selected model and encoder
+
 
 import logging
 from pathlib import Path
