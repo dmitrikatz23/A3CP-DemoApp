@@ -117,6 +117,19 @@ def clear_landmark_queue():
 st.set_page_config(page_title="TryIt", layout="wide")
 st.title("TryIt - Streaming Gesture Recognition")
 
+
+# -----------------------------------
+# MediaPipe Initialization & Landmark Constants
+# -----------------------------------
+mp_drawing = mp.solutions.drawing_utils
+mp_holistic = mp.solutions.holistic
+
+# Number of landmarks in various MediaPipe models
+num_pose_landmarks = 33
+num_hand_landmarks_per_hand = 21
+num_face_landmarks = 468
+
+
 # -----------------------------
 # Hugging Face Setup
 # -----------------------------
