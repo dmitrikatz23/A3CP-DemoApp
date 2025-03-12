@@ -37,45 +37,20 @@ os.makedirs(LOCAL_MODEL_DIR, exist_ok=True)
 def load_mediapipe_model():
     return mp.solutions.holistic.Holistic(
         min_detection_confidence=0.5,
-        min_tracking_confidence=0.5
+        min_tracking_confidence=0.5,
+        static_image_mode=False
     )
 
 holistic_model = load_mediapipe_model()
 mp_drawing = mp.solutions.drawing_utils  # Drawing helper
 
 # -----------------------------
-# Initialize Session State
-# -----------------------------
-if "holistic_status" not in st.session_state:
-    st.session_state["holistic_status"] = {"pose": False, "left_hand": False, "right_hand": False}
-
-if "tryit_model_confirmed" not in st.session_state:
-    st.session_state["tryit_model_confirmed"] = False
-
-if "tryit_selected_pair" not in st.session_state:
-    st.session_state["tryit_selected_pair"] = None
-
-if "tryit_predicted_text" not in st.session_state:
-    st.session_state["tryit_predicted_text"] = "Waiting for input..."
-
-# -----------------------------
 # Helper Function: Extract Landmarks from Frame
 # -----------------------------
 def extract_landmarks(image):
-    """Extract holistic landmarks from an image and store detection status in session state."""
+    """Extract holistic landmarks from an image."""
     image_rgb = cv2.cvtColor(image, cv2.COLOR_BGR2RGB)
     results = holistic_model.process(image_rgb)
-
-    # Store detection status in session state
-    st.session_state["holistic_status"] = {
-        "pose": bool(results.pose_landmarks),
-        "left_hand": bool(results.left_hand_landmarks),
-        "right_hand": bool(results.right_hand_landmarks),
-    }
-
-    # If no landmarks detected, return None
-    if not results.pose_landmarks and not results.left_hand_landmarks and not results.right_hand_landmarks:
-        return None, results  
 
     landmarks = []
     
@@ -90,7 +65,7 @@ def extract_landmarks(image):
     append_landmarks(results.left_hand_landmarks, 21)  # Left Hand: 21 points
     append_landmarks(results.right_hand_landmarks, 21)  # Right Hand: 21 points
 
-    return np.array(landmarks, dtype=np.float32), results
+    return np.array(landmarks, dtype=np.float32) if landmarks else None, results
 
 # -----------------------------
 # WebRTC Frame Callback for Inference
@@ -181,6 +156,7 @@ with st.sidebar:
             if not os.path.exists(encoder_path):
                 hf_hub_download(model_repo_name, chosen_encoder, local_dir=LOCAL_MODEL_DIR, repo_type="model", token=hf_token)
 
+            # Load Model & Encoder
             st.session_state["tryit_model"] = tf.keras.models.load_model(model_path)
             st.session_state["tryit_encoder"] = joblib.load(encoder_path)
             st.success("Model and encoder loaded successfully!")
@@ -192,15 +168,16 @@ left_col, right_col = st.columns([1, 2])
 
 with left_col:
     st.header("WebRTC Stream")
-    webrtc_streamer(
-        key="tryit-stream",
-        mode=WebRtcMode.SENDRECV,
-        rtc_configuration={"iceServers": [{"urls": ["stun:stun.l.google.com:19302"]}]},
-        media_stream_constraints={"video": True, "audio": False},
-        video_frame_callback=video_frame_callback,
-        async_processing=True,
-    )
+    if st.session_state.get("tryit_model_confirmed"):
+        webrtc_streamer(
+            key="tryit-stream",
+            mode=WebRtcMode.SENDRECV,
+            rtc_configuration={"iceServers": [{"urls": ["stun:stun.l.google.com:19302"]}]},
+            media_stream_constraints={"video": True, "audio": False},
+            video_frame_callback=video_frame_callback,
+            async_processing=True,
+        )
 
 with right_col:
     st.header("Predicted Gesture")
-    st.write(f"**Prediction:** {st.session_state['tryit_predicted_text']}")  
+    st.write(f"**Prediction:** {st.session_state.get('tryit_predicted_text', 'Waiting for input...')}")  
