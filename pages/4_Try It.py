@@ -24,6 +24,10 @@ from streamlit_webrtc import WebRtcMode, webrtc_streamer, WebRtcStreamerContext
 from tensorflow.keras.preprocessing.sequence import pad_sequences
 from huggingface_hub import HfApi, hf_hub_download
 
+sys.path.append(str(Path(__file__).resolve().parent.parent))
+from sample_utils.download import download_file
+from sample_utils.turn import get_ice_servers
+
 # -----------------------------
 # Page Configuration
 # -----------------------------
