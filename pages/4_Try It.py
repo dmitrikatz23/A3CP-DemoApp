@@ -28,11 +28,94 @@ sys.path.append(str(Path(__file__).resolve().parent.parent))
 from sample_utils.download import download_file
 from sample_utils.turn import get_ice_servers
 
+# -----------------------------------
+# Logging Setup
+# -----------------------------------
+DEBUG_MODE = False  # Set to True only for debugging
+
+def debug_log(message):
+    if DEBUG_MODE:
+        logging.info(message)
+
+logging.basicConfig(
+    level=logging.WARNING if not DEBUG_MODE else logging.DEBUG,  # Only show debug logs if DEBUG_MODE is True
+    format="%(asctime)s [%(levelname)s] %(message)s",
+    handlers=[
+        logging.StreamHandler(),  
+        logging.FileHandler("app_debug.log", mode='w')  
+    ]
+)
+
+logger = logging.getLogger(__name__)
+logger.info("🚀 Logging is initialized!")
+
+
+
+# -----------------------------------
+# Threading and Session State Management
+# -----------------------------------
+
+# Ensure landmark_queue persists across Streamlit reruns
+if "landmark_queue" not in st.session_state:
+    st.session_state.landmark_queue = deque(maxlen=1000)
+
+# Use the stored queue in session state
+landmark_queue = st.session_state.landmark_queue
+
+# Thread-safe lock for WebRTC thread access stored in session state
+if "lock" not in st.session_state:
+    st.session_state.lock = threading.Lock()
+        
+lock = st.session_state.lock
+
+# Initialize landmark_queue_snapshot in session state to prevent KeyError
+if 'landmark_queue_snapshot' not in st.session_state:
+    st.session_state['landmark_queue_snapshot'] = []
+
+# Initialize action_word in session state
+if 'action_word' not in st.session_state:
+    st.session_state['action_word'] = "Unknown_Action"
+
+# Initialize a flag to track streamer state
+if 'streamer_running' not in st.session_state:
+    st.session_state['streamer_running'] = False
+
+def store_landmarks(row_data):
+    with lock:  # Ensures only one thread writes at a time
+        landmark_queue.append(row_data)
+    
+    debug_log(f"Stored {len(landmark_queue)} frames in queue")  # Debugging
+    debug_log(f"First 5 values: {row_data[:5]}")  # Debug first few values
+
+
+def get_landmark_queue():
+    """Thread-safe function to retrieve a copy of the landmark queue."""
+    with lock:
+        queue_snapshot = list(landmark_queue)  # Copy queue safely
+
+    # Store snapshot for session persistence
+    st.session_state.landmark_queue_snapshot = queue_snapshot
+    debug_log(f"🟡 Snapshot taken with {len(queue_snapshot)} frames.")
+
+    return queue_snapshot  # Return the copied queue
+
+
+def clear_landmark_queue():
+    """Thread-safe function to clear the landmark queue."""
+    with lock:
+        debug_log(f"🟡 Clearing queue... Current size: {len(landmark_queue)}")
+        landmark_queue.clear()
+    debug_log("🟡 Landmark queue cleared.")
+
+
+
+
+
 # -----------------------------
-# Page Configuration
+# Streamlit Page Configuration
 # -----------------------------
 st.set_page_config(page_title="TryIt", layout="wide")
-st.title("TryIt - Inference & Streaming Interface")
+st.title("TryIt - Streaming Gesture Recognition")
 
 # -----------------------------
 # Hugging Face Setup
