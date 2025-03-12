@@ -1,51 +1,28 @@
-import logging
-from pathlib import Path
-import threading
-from collections import deque
-import os
-import re
-import numpy as np
-import cv2
+import mediapipe as mp
 import av
+import cv2
+import numpy as np
 import streamlit as st
 from streamlit_webrtc import WebRtcMode, webrtc_streamer
-from huggingface_hub import HfApi, hf_hub_download
-import joblib
 import tensorflow as tf
+import joblib
 from tensorflow.keras.preprocessing.sequence import pad_sequences
+from huggingface_hub import hf_hub_download, HfApi
+import os
+import re
 
-import mediapipe as mp
-
-# -------------------------------------------------------------------
-# Logging Setup (Optional Debugging)
-# -------------------------------------------------------------------
-DEBUG_MODE = False
-
-def debug_log(msg):
-    if DEBUG_MODE:
-        logging.info(msg)
-
-logging.basicConfig(
-    level=logging.DEBUG if DEBUG_MODE else logging.WARNING,
-    format="%(asctime)s [%(levelname)s] %(message)s",
-    handlers=[logging.StreamHandler()]
-)
-
-logger = logging.getLogger(__name__)
-logger.info("✅ Logging is initialized!")
-
-# -------------------------------------------------------------------
+# -----------------------------
 # Page Configuration
-# -------------------------------------------------------------------
-st.set_page_config(page_title="TryIt - Thread-Safe Holistic", layout="wide")
-st.title("TryIt - Thread-Safe Holistic + Model Inference")
+# -----------------------------
+st.set_page_config(page_title="TryIt", layout="wide")
+st.title("TryIt - Inference & Streaming Interface")
 
-# -------------------------------------------------------------------
+# -----------------------------
 # Hugging Face Setup
-# -------------------------------------------------------------------
+# -----------------------------
 hf_token = os.getenv("Recorded_Datasets")
 if not hf_token:
-    st.error("Hugging Face token not found. Please set the 'Recorded_Datasets' secret.")
+    st.error("Hugging Face token not found. Please ensure the 'Recorded_Datasets' secret is set.")
     st.stop()
 
 hf_api = HfApi()
@@ -53,189 +30,170 @@ model_repo_name = "dk23/A3CP_models"
 LOCAL_MODEL_DIR = "local_models"
 os.makedirs(LOCAL_MODEL_DIR, exist_ok=True)
 
-# -------------------------------------------------------------------
-# Threading + Session State
-# -------------------------------------------------------------------
-# We replicate RecordActions.py style concurrency:
-if "lock" not in st.session_state:
-    st.session_state.lock = threading.Lock()
-
-lock = st.session_state.lock
-
-# Store the final predicted text
-# (We only store the last predicted label, no queue needed)
-if "predicted_label" not in st.session_state:
-    st.session_state.predicted_label = "Waiting..."
-
-# -------------------------------------------------------------------
-# MediaPipe Holistic (Cached Resource)
-# -------------------------------------------------------------------
-mp_drawing = mp.solutions.drawing_utils
-mp_holistic = mp.solutions.holistic
-
+# -----------------------------
+# Load MediaPipe Holistic Model (Cached)
+# -----------------------------
 @st.cache_resource
-def load_mediapipe_holistic():
-    return mp_holistic.Holistic(
+def load_mediapipe_model():
+    return mp.solutions.holistic.Holistic(
         min_detection_confidence=0.5,
-        min_tracking_confidence=0.5,
-        static_image_mode=False
+        min_tracking_confidence=0.5
     )
 
-holistic_model = load_mediapipe_holistic()
+holistic_model = load_mediapipe_model()
+mp_drawing = mp.solutions.drawing_utils  # Drawing helper
 
-# -------------------------------------------------------------------
-# Model + Encoder in Session State
-# -------------------------------------------------------------------
-if "tryit_model" not in st.session_state:
-    st.session_state.tryit_model = None
-if "tryit_encoder" not in st.session_state:
-    st.session_state.tryit_encoder = None
+# -----------------------------
+# Initialize Session State
+# -----------------------------
+if "holistic_status" not in st.session_state:
+    st.session_state["holistic_status"] = {"pose": False, "left_hand": False, "right_hand": False}
 
-# -------------------------------------------------------------------
-# Helper: Flatten Landmarks
-# -------------------------------------------------------------------
-def flatten_landmarks(results):
-    """
-    Flatten pose(33), left(21), right(21) => 75 landmarks x 3 coords = 225 values
-    If your model uses face landmarks, adapt accordingly.
-    """
-    def to_xyz(landmark_list, count):
-        if not landmark_list:
-            return [0.0, 0.0, 0.0] * count
-        return [coord for lm in landmark_list.landmark for coord in (lm.x, lm.y, lm.z)]
+if "tryit_model_confirmed" not in st.session_state:
+    st.session_state["tryit_model_confirmed"] = False
+
+if "tryit_selected_pair" not in st.session_state:
+    st.session_state["tryit_selected_pair"] = None
+
+if "tryit_predicted_text" not in st.session_state:
+    st.session_state["tryit_predicted_text"] = "Waiting for input..."
+
+# -----------------------------
+# Helper Function: Extract Landmarks from Frame
+# -----------------------------
+def extract_landmarks(image):
+    """Extract holistic landmarks from an image and store detection status in session state."""
+    image_rgb = cv2.cvtColor(image, cv2.COLOR_BGR2RGB)
+    results = holistic_model.process(image_rgb)
+
+    # Store detection status in session state
+    st.session_state["holistic_status"] = {
+        "pose": bool(results.pose_landmarks),
+        "left_hand": bool(results.left_hand_landmarks),
+        "right_hand": bool(results.right_hand_landmarks),
+    }
+
+    # If no landmarks detected, return None
+    if not results.pose_landmarks and not results.left_hand_landmarks and not results.right_hand_landmarks:
+        return None, results  
+
+    landmarks = []
     
-    pose_vals = to_xyz(results.pose_landmarks, 33)
-    left_vals = to_xyz(results.left_hand_landmarks, 21)
-    right_vals = to_xyz(results.right_hand_landmarks, 21)
+    def append_landmarks(landmark_list, count):
+        if landmark_list:
+            for lm in landmark_list.landmark:
+                landmarks.extend([lm.x, lm.y, lm.z])
+        else:
+            landmarks.extend([0.0, 0.0, 0.0] * count)  # Fill missing landmarks
 
-    merged = pose_vals + left_vals + right_vals
-    if len(merged) == 0:
-        return None  # No detection
-    return np.array(merged, dtype=np.float32)
+    append_landmarks(results.pose_landmarks, 33)  # Pose: 33 points
+    append_landmarks(results.left_hand_landmarks, 21)  # Left Hand: 21 points
+    append_landmarks(results.right_hand_landmarks, 21)  # Right Hand: 21 points
 
-# -------------------------------------------------------------------
-# Video Callback - Thread-Safe (No st.* calls here)
-# -------------------------------------------------------------------
+    return np.array(landmarks, dtype=np.float32), results
+
+# -----------------------------
+# WebRTC Frame Callback for Inference
+# -----------------------------
 def video_frame_callback(frame: av.VideoFrame) -> av.VideoFrame:
-    """
-    This is called in a separate thread (async_media_processor_X).
-    We do not call any st.* here to avoid "missing ScriptRunContext".
-    """
-    input_bgr = frame.to_ndarray(format="bgr24")
-    # Convert to RGB for MediaPipe
-    img_rgb = cv2.cvtColor(input_bgr, cv2.COLOR_BGR2RGB)
+    """Process frame for real-time gesture prediction."""
+    img_bgr = frame.to_ndarray(format="bgr24")
 
-    # Process with Holistic
-    results = holistic_model.process(img_rgb)
+    # Extract landmarks using MediaPipe Holistic
+    landmarks, results = extract_landmarks(img_bgr)
 
-    # Annotate for display
-    annotated_image = input_bgr.copy()
+    if "tryit_model" in st.session_state and "tryit_encoder" in st.session_state:
+        model = st.session_state["tryit_model"]
+        encoder = st.session_state["tryit_encoder"]
+
+        if landmarks is not None:
+            # Preprocess input
+            landmarks = np.expand_dims(landmarks, axis=0)
+            landmarks = pad_sequences([landmarks], maxlen=100, padding='post', dtype='float32', value=-1.0)
+
+            # Predict gesture
+            predictions = model.predict(landmarks)
+            predicted_label = np.argmax(predictions, axis=1)
+            predicted_text = encoder.inverse_transform(predicted_label)[0]
+
+            # Store in session state for UI display
+            st.session_state["tryit_predicted_text"] = predicted_text
+            cv2.putText(img_bgr, f"Prediction: {predicted_text}", (10, 50), cv2.FONT_HERSHEY_SIMPLEX, 1, (0, 255, 0), 2)
+        else:
+            st.session_state["tryit_predicted_text"] = "No Gesture Detected"
+
+    # Draw detected landmarks
     if results.pose_landmarks:
-        mp_drawing.draw_landmarks(annotated_image, results.pose_landmarks, mp_holistic.POSE_CONNECTIONS)
+        mp_drawing.draw_landmarks(img_bgr, results.pose_landmarks, mp.solutions.holistic.POSE_CONNECTIONS)
     if results.left_hand_landmarks:
-        mp_drawing.draw_landmarks(annotated_image, results.left_hand_landmarks, mp_holistic.HAND_CONNECTIONS)
+        mp_drawing.draw_landmarks(img_bgr, results.left_hand_landmarks, mp.solutions.holistic.HAND_CONNECTIONS)
     if results.right_hand_landmarks:
-        mp_drawing.draw_landmarks(annotated_image, results.right_hand_landmarks, mp_holistic.HAND_CONNECTIONS)
+        mp_drawing.draw_landmarks(img_bgr, results.right_hand_landmarks, mp.solutions.holistic.HAND_CONNECTIONS)
 
-    # Flatten
-    landmarks = flatten_landmarks(results)
-    if landmarks is not None:
-        # Predict if model + encoder loaded
-        model = st.session_state.tryit_model
-        encoder = st.session_state.tryit_encoder
-        if (model is not None) and (encoder is not None):
-            # Pad for LSTM
-            data = np.expand_dims(landmarks, axis=0)
-            data = pad_sequences([data], maxlen=100, padding='post', dtype='float32', value=-1.0)
+    return av.VideoFrame.from_ndarray(img_bgr, format="bgr24")
 
-            preds = model.predict(data)
-            label_idx = np.argmax(preds, axis=1)
-            pred_label = encoder.inverse_transform(label_idx)[0]
-
-            # Thread-safe store in session_state
-            with lock:
-                st.session_state.predicted_label = pred_label
-
-    return av.VideoFrame.from_ndarray(annotated_image, format="bgr24")
-
-# -------------------------------------------------------------------
-# Model/Encoder Selector (Like RecordActions approach)
-# -------------------------------------------------------------------
+# -----------------------------
+# Sidebar: Model Selection
+# -----------------------------
 @st.cache_data
 def get_model_encoder_pairs():
-    """Retrieve matched model/encoder pairs from HF."""
-    files = hf_api.list_repo_files(model_repo_name, repo_type="model", token=hf_token)
-    model_files = [f for f in files if f.endswith(".h5")]
-    encoder_files = [f for f in files if f.endswith(".pkl")]
+    """Retrieve matched model/encoder pairs from Hugging Face."""
+    repo_files = hf_api.list_repo_files(model_repo_name, repo_type="model", token=hf_token)
+    model_files = [f for f in repo_files if f.endswith(".h5")]
+    encoder_files = [f for f in repo_files if f.endswith(".pkl")]
 
     pairs = {}
     for mf in model_files:
-        if mf.startswith("LSTM_model_") and mf.endswith(".h5"):
-            ts = mf[len("LSTM_model_"):-3]
-            pairs.setdefault(ts, {})["model"] = mf
-
+        ts = mf[len("LSTM_model_"):-3]  # Extract timestamp
+        pairs.setdefault(ts, {})["model"] = mf
     for ef in encoder_files:
-        if ef.startswith("label_encoder_") and ef.endswith(".pkl"):
-            ts = ef[len("label_encoder_"):-4]
-            pairs.setdefault(ts, {})["encoder"] = ef
+        ts = ef[len("label_encoder_"):-4]  # Extract timestamp
+        pairs.setdefault(ts, {})["encoder"] = ef
 
-    valid = []
-    for ts, item in pairs.items():
-        if "model" in item and "encoder" in item:
-            valid.append((ts, item["model"], item["encoder"]))
-    valid.sort(key=lambda x: x[0], reverse=True)
-    return valid
+    valid_pairs = [(ts, items["model"], items["encoder"]) for ts, items in pairs.items() if "model" in items and "encoder" in items]
+    valid_pairs.sort(key=lambda x: x[0], reverse=True)
+    return valid_pairs
 
 model_encoder_pairs = get_model_encoder_pairs()
 
-# -------------------------------------------------------------------
-# Sidebar UI for Model Selection
-# -------------------------------------------------------------------
 with st.sidebar:
-    st.subheader("Select Model/Encoder from HF")
-
+    st.subheader("Select a Model/Encoder Pair")
     if not model_encoder_pairs:
-        st.warning("No .h5 + .pkl pairs found in the repo.")
+        st.warning("No valid model/encoder pairs found.")
     else:
-        pair_dict = {}
-        for ts, mf, ef in model_encoder_pairs:
-            label = f"{ts} => {mf} & {ef}"
-            pair_dict[label] = (mf, ef)
+        pair_options = {f"{ts} | Model: {mf} | Encoder: {ef}": (mf, ef) for ts, mf, ef in model_encoder_pairs}
+        selected_label = st.selectbox("Choose a matched pair:", list(pair_options.keys()))
 
-        chosen_label = st.selectbox("Model/Encoder pairs:", list(pair_dict.keys()))
-        if chosen_label:
-            chosen_model, chosen_encoder = pair_dict[chosen_label]
-            st.write("**Chosen Model:**", chosen_model)
-            st.write("**Chosen Encoder:**", chosen_encoder)
+        if selected_label:
+            chosen_model, chosen_encoder = pair_options[selected_label]
+            st.write("**Selected Model:**", chosen_model)
+            st.write("**Selected Encoder:**", chosen_encoder)
 
-        if st.button("Load Model & Encoder") and chosen_label:
+        if st.button("Confirm Model") and selected_label:
+            st.session_state["tryit_selected_pair"] = pair_options[selected_label]
+            st.session_state["tryit_model_confirmed"] = True
+
             model_path = os.path.join(LOCAL_MODEL_DIR, chosen_model)
             encoder_path = os.path.join(LOCAL_MODEL_DIR, chosen_encoder)
 
             if not os.path.exists(model_path):
-                hf_hub_download(model_repo_name, chosen_model,
-                                local_dir=LOCAL_MODEL_DIR,
-                                repo_type="model", token=hf_token)
+                hf_hub_download(model_repo_name, chosen_model, local_dir=LOCAL_MODEL_DIR, repo_type="model", token=hf_token)
             if not os.path.exists(encoder_path):
-                hf_hub_download(model_repo_name, chosen_encoder,
-                                local_dir=LOCAL_MODEL_DIR,
-                                repo_type="model", token=hf_token)
+                hf_hub_download(model_repo_name, chosen_encoder, local_dir=LOCAL_MODEL_DIR, repo_type="model", token=hf_token)
 
-            # Load them
-            st.session_state.tryit_model = tf.keras.models.load_model(model_path)
-            st.session_state.tryit_encoder = joblib.load(encoder_path)
+            st.session_state["tryit_model"] = tf.keras.models.load_model(model_path)
+            st.session_state["tryit_encoder"] = joblib.load(encoder_path)
+            st.success("Model and encoder loaded successfully!")
 
-            st.success("Model + Encoder loaded successfully!")
-
-# -------------------------------------------------------------------
+# -----------------------------
 # Main Layout
-# -------------------------------------------------------------------
+# -----------------------------
 left_col, right_col = st.columns([1, 2])
 
 with left_col:
-    st.header("WebRTC Stream (Holistic)")
+    st.header("WebRTC Stream")
     webrtc_streamer(
-        key="threadsafe-tryit-stream",
+        key="tryit-stream",
         mode=WebRtcMode.SENDRECV,
         rtc_configuration={"iceServers": [{"urls": ["stun:stun.l.google.com:19302"]}]},
         media_stream_constraints={"video": True, "audio": False},
@@ -245,6 +203,4 @@ with left_col:
 
 with right_col:
     st.header("Predicted Gesture")
-    # We read from session_state (protected by lock in callback)
-    with lock:
-        st.write(f"**Current Prediction:** {st.session_state.predicted_label}")
+    st.write(f"**Prediction:** {st.session_state['tryit_predicted_text']}")  
