@@ -1,16 +1,28 @@
-# Description: Streamlit page for real-time gesture prediction using MediaPipe Holistic and a pre-trained LSTM model.
-import mediapipe as mp
+import logging
+import os
+import re
+import sys
+import csv
+import time
+import threading
+from pathlib import Path
+from datetime import datetime
+from typing import List, NamedTuple
+from collections import deque
+
 import av
 import cv2
 import numpy as np
-import streamlit as st
-from streamlit_webrtc import WebRtcMode, webrtc_streamer
-import tensorflow as tf
+import pandas as pd
+import mediapipe as mp
 import joblib
+import tensorflow as tf
+
+import streamlit as st
+from streamlit_webrtc import WebRtcMode, webrtc_streamer, WebRtcStreamerContext
+
 from tensorflow.keras.preprocessing.sequence import pad_sequences
-from huggingface_hub import hf_hub_download, HfApi
-import os
-import re
+from huggingface_hub import HfApi, hf_hub_download
 
 # -----------------------------
 # Page Configuration
