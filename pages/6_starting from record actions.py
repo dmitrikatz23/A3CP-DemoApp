@@ -24,26 +24,6 @@ sys.path.append(str(Path(__file__).resolve().parent.parent))
 from sample_utils.download import download_file
 from sample_utils.turn import get_ice_servers
 
-# -----------------------------------
-# Logging Setup
-# -----------------------------------
-DEBUG_MODE = False  # Set to True only for debugging
-
-def debug_log(message):
-    if DEBUG_MODE:
-        logging.info(message)
-
-logging.basicConfig(
-    level=logging.WARNING if not DEBUG_MODE else logging.DEBUG,  # Only show debug logs if DEBUG_MODE is True
-    format="%(asctime)s [%(levelname)s] %(message)s",
-    handlers=[
-        logging.StreamHandler(),  
-        logging.FileHandler("app_debug.log", mode='w')  
-    ]
-)
-
-logger = logging.getLogger(__name__)
-logger.info("🚀 Logging is initialized!")
 
 
 # -----------------------------------
@@ -405,67 +385,67 @@ if not hf_token:
     st.error("Hugging Face token not found. Please ensure the 'Recorded_Datasets' secret is added in the Space settings.")
     st.stop()
 
-# Hugging Face repository details
-repo_name = "dk23/A3CP_actions"
-local_repo_path = "local_repo"
+# # Hugging Face repository details
+# repo_name = "dk23/A3CP_actions"
+# local_repo_path = "local_repo"
 
-# Configure generic Git identity
-git_user = "A3CP_bot"
-git_email = "no-reply@huggingface.co"
+# # Configure generic Git identity
+# git_user = "A3CP_bot"
+# git_email = "no-reply@huggingface.co"
 
-# Clone or create the Hugging Face repository
-repo = Repository(local_dir=local_repo_path, clone_from=repo_name, use_auth_token=hf_token, repo_type="dataset")
+# # Clone or create the Hugging Face repository
+# repo = Repository(local_dir=local_repo_path, clone_from=repo_name, use_auth_token=hf_token, repo_type="dataset")
 
-# Configure Git user details
-repo.git_config_username_and_email(git_user, git_email)
+# # Configure Git user details
+# repo.git_config_username_and_email(git_user, git_email)
 
-def save_to_huggingface(csv_path):
-    # Get current timestamp, user name, and action word from session state.
-    timestamp = datetime.now().strftime("%Y-%m-%d_%H-%M-%S")
-    uname = st.session_state.get("user_name", "unknown") or "unknown"
-    action_class = st.session_state.get("action_word", "Unknown_Action")
+# def save_to_huggingface(csv_path):
+#     # Get current timestamp, user name, and action word from session state.
+#     timestamp = datetime.now().strftime("%Y-%m-%d_%H-%M-%S")
+#     uname = st.session_state.get("user_name", "unknown") or "unknown"
+#     action_class = st.session_state.get("action_word", "Unknown_Action")
     
-    # Use the updated naming scheme in the repository filename.
-    repo_csv_filename = f"{uname}_{action_class}_{timestamp}.csv"
-    repo_csv_path = os.path.join(local_repo_path, repo_csv_filename)
+#     # Use the updated naming scheme in the repository filename.
+#     repo_csv_filename = f"{uname}_{action_class}_{timestamp}.csv"
+#     repo_csv_path = os.path.join(local_repo_path, repo_csv_filename)
 
-    # Ensure local repo directory exists.
-    os.makedirs(local_repo_path, exist_ok=True)
+#     # Ensure local repo directory exists.
+#     os.makedirs(local_repo_path, exist_ok=True)
 
-    # Copy the CSV to the repository folder.
-    df = pd.read_csv(csv_path)
-    df.to_csv(repo_csv_path, index=False)
+#     # Copy the CSV to the repository folder.
+#     df = pd.read_csv(csv_path)
+#     df.to_csv(repo_csv_path, index=False)
 
-    # Add, commit, and push to Hugging Face.
-    repo.git_add(repo_csv_filename)
-    repo.git_commit(f"Update {action_class} CSV by {uname} ({timestamp})")
-    repo.git_push()
+#     # Add, commit, and push to Hugging Face.
+#     repo.git_add(repo_csv_filename)
+#     repo.git_commit(f"Update {action_class} CSV by {uname} ({timestamp})")
+#     repo.git_push()
 
-    st.success(f"CSV saved to Hugging Face repository: {repo_name} as {repo_csv_filename}")
+#     st.success(f"CSV saved to Hugging Face repository: {repo_name} as {repo_csv_filename}")
 
 
 
-# -----------------------------------
-# CSV Setup
-# -----------------------------------
-csv_folder = "csv"
-if not os.path.exists(csv_folder):
-    os.makedirs(csv_folder)
+# # -----------------------------------
+# # CSV Setup
+# # -----------------------------------
+# csv_folder = "csv"
+# if not os.path.exists(csv_folder):
+#     os.makedirs(csv_folder)
 
-# Define the master CSV file path
-master_csv_file = os.path.join(csv_folder, "all_actions.csv")
+# # Define the master CSV file path
+# master_csv_file = os.path.join(csv_folder, "all_actions.csv")
 
-# Store master_csv_file in session state for easy access
-st.session_state["master_csv_file"] = master_csv_file
+# # Store master_csv_file in session state for easy access
+# st.session_state["master_csv_file"] = master_csv_file
 
-# Initialize master CSV with header if it doesn't exist
-if "csv_initialized" not in st.session_state:
-    if not os.path.exists(master_csv_file):
-        with open(master_csv_file, mode='w', newline='') as f:
-            csv_writer = csv.writer(f)
-            csv_writer.writerow(header)
-        debug_log(f"🟡 Master CSV '{master_csv_file}' initialized with header.")
-    st.session_state["csv_initialized"] = True
+# # Initialize master CSV with header if it doesn't exist
+# if "csv_initialized" not in st.session_state:
+#     if not os.path.exists(master_csv_file):
+#         with open(master_csv_file, mode='w', newline='') as f:
+#             csv_writer = csv.writer(f)
+#             csv_writer.writerow(header)
+#         debug_log(f"🟡 Master CSV '{master_csv_file}' initialized with header.")
+#     st.session_state["csv_initialized"] = True
 
 # -----------------------------------
 # Streamlit UI and Logic
