@@ -19,36 +19,12 @@ import tensorflow as tf
 import streamlit as st
 from streamlit_webrtc import WebRtcMode, webrtc_streamer, WebRtcStreamerContext
 from tensorflow.keras.models import load_model
-import joblib  # For loading the label encoder
 from tensorflow.keras.preprocessing.sequence import pad_sequences
 from huggingface_hub import HfApi, hf_hub_download
 
 sys.path.append(str(Path(__file__).resolve().parent.parent))
 from sample_utils.download import download_file
 from sample_utils.turn import get_ice_servers
-
-# -----------------------------------
-# Logging Setup
-# -----------------------------------
-DEBUG_MODE = False  # Set to True only for debugging
-
-def debug_log(message):
-    if DEBUG_MODE:
-        logging.info(message)
-
-logging.basicConfig(
-    level=logging.WARNING if not DEBUG_MODE else logging.DEBUG,  # Only show debug logs if DEBUG_MODE is True
-    format="%(asctime)s [%(levelname)s] %(message)s",
-    handlers=[
-        logging.StreamHandler(),  
-        logging.FileHandler("app_debug.log", mode='w')  
-    ]
-)
-
-logger = logging.getLogger(__name__)
-logger.info("🚀 Logging is initialized!")
-
-
 
 # -----------------------------------
 # Threading and Session State Management
@@ -391,29 +367,16 @@ def video_frame_callback(frame: av.VideoFrame) -> av.VideoFrame:
 # -----------------------------
 # Hugging Face Setup
 # -----------------------------
-hf_token = os.getenv("Recorded_Datasets")
-if not hf_token:
-    st.error("Hugging Face token not found. Please ensure the 'Recorded_Datasets' secret is set.")
-    st.stop()
 
 hf_api = HfApi()
 model_repo_name = "dk23/A3CP_models"
 LOCAL_MODEL_DIR = "local_models"
 os.makedirs(LOCAL_MODEL_DIR, exist_ok=True)
 
-# -----------------------------
-# Load MediaPipe Holistic Model (Cached)
-# -----------------------------
-@st.cache_resource
-def load_mediapipe_model():
-    return mp.solutions.holistic.Holistic(
-        min_detection_confidence=0.5,
-        min_tracking_confidence=0.5,
-        static_image_mode=False
-    )
+# Configure generic Git identity
+git_user = "A3CP_bot"
+git_email = "no-reply@huggingface.co"
 
-holistic_model = load_mediapipe_model()
-mp_drawing = mp.solutions.drawing_utils  # Drawing helper
 
 # -----------------------------
 # Sidebar: Model Selection
@@ -485,6 +448,18 @@ with left_col:
             video_frame_callback=video_frame_callback,
             async_processing=True,
         )
+        # Update streamer_running flag based on streamer state
+        if webrtc_ctx.state.playing:
+            st.session_state['streamer_running'] = True
+        else:
+            if st.session_state['streamer_running']:
+                # Streamer has just stopped
+                st.session_state['streamer_running'] = False
+                # Snapshot the queue
+                st.session_state["landmark_queue_snapshot"] = list(landmark_queue)
+                debug_log(f"🟡 Snapshot taken with {len(st.session_state['landmark_queue_snapshot'])} frames.")
+                st.success("Streaming has stopped. You can now save keyframes.")
+
 
 with right_col:
     st.header("Predicted Gesture")
