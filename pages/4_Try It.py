@@ -371,7 +371,7 @@ hf_token = os.getenv("Recorded_Datasets")
 if not hf_token:
     st.error("Hugging Face token not found. Please ensure the 'Recorded_Datasets' secret is added in the Space settings.")
     st.stop()
-    
+
 hf_api = HfApi()
 model_repo_name = "dk23/A3CP_models"
 LOCAL_MODEL_DIR = "local_models"
@@ -452,17 +452,6 @@ with left_col:
             video_frame_callback=video_frame_callback,
             async_processing=True,
         )
-        # Update streamer_running flag based on streamer state
-        if webrtc_ctx.state.playing:
-            st.session_state['streamer_running'] = True
-        else:
-            if st.session_state['streamer_running']:
-                # Streamer has just stopped
-                st.session_state['streamer_running'] = False
-                # Snapshot the queue
-                st.session_state["landmark_queue_snapshot"] = list(landmark_queue)
-                debug_log(f"🟡 Snapshot taken with {len(st.session_state['landmark_queue_snapshot'])} frames.")
-                st.success("Streaming has stopped. You can now save keyframes.")
 
 
 with right_col:
