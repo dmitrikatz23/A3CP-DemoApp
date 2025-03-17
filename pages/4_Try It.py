@@ -69,30 +69,184 @@ def load_mediapipe_model():
     )
 
 holistic_model = load_mediapipe_model()
-mp_drawing = mp.solutions.drawing_utils  # Drawing helper
 
-# -----------------------------
-# Helper Function: Extract Landmarks from Frame
-# -----------------------------
-def extract_landmarks(image):
-    """Extract holistic landmarks from an image."""
-    image_rgb = cv2.cvtColor(image, cv2.COLOR_BGR2RGB)
+
+# -----------------------------------
+# Helper Functions
+# -----------------------------------
+def calculate_angle(a, b, c):
+    """
+    Calculate the angle formed at point b by (a -> b -> c).
+    Returns angle in degrees (0-180).
+    """
+    a = np.array(a)
+    b = np.array(b)
+    c = np.array(c)
+    radians = np.arctan2(c[1] - b[1], c[0] - b[0]) - np.arctan2(a[1] - b[1], a[0] - b[0])
+    angle = np.abs(radians * 180.0 / np.pi)
+    if angle > 180.0:
+        angle = 360 - angle
+    return angle
+
+def hand_angles(hand_landmarks):
+    """
+    Calculate angles for each finger joint using hand landmarks.
+    Returns a list of angles for all joints in the expected order.
+    """
+    if (not hand_landmarks) or all((p[0] == 0 and p[1] == 0 and p[2] == 0) for p in hand_landmarks):
+        return [0] * len(angle_names_base)
+
+    # Convert list of landmarks into a dict for easy indexing
+    h = {i: hand_landmarks[i] for i in range(len(hand_landmarks))}
+    def pt(i):
+        return [h[i][0], h[i][1]]
+
+    # Thumb angles
+    thumb_mcp = calculate_angle(pt(1), pt(2), pt(3))
+    thumb_ip  = calculate_angle(pt(2), pt(3), pt(4))
+
+    # Index finger angles
+    index_mcp = calculate_angle(pt(0), pt(5), pt(6))
+    index_pip = calculate_angle(pt(5), pt(6), pt(7))
+    index_dip = calculate_angle(pt(6), pt(7), pt(8))
+
+    # Middle finger angles
+    middle_mcp = calculate_angle(pt(0), pt(9), pt(10))
+    middle_pip = calculate_angle(pt(9), pt(10), pt(11))
+    middle_dip = calculate_angle(pt(10), pt(11), pt(12))
+
+    # Ring finger angles
+    ring_mcp = calculate_angle(pt(0), pt(13), pt(14))
+    ring_pip = calculate_angle(pt(13), pt(14), pt(15))
+    ring_dip = calculate_angle(pt(14), pt(15), pt(16))
+
+    # Little finger angles
+    little_mcp = calculate_angle(pt(0), pt(17), pt(18))
+    little_pip = calculate_angle(pt(17), pt(18), pt(19))
+    little_dip = calculate_angle(pt(18), pt(19), pt(20))
+
+    # Return all angles in a flat list
+    return [
+        thumb_mcp, thumb_ip,
+        index_mcp, index_pip, index_dip,
+        middle_mcp, middle_pip, middle_dip,
+        ring_mcp, ring_pip, ring_dip,
+        little_mcp, little_pip, little_dip
+    ]
+
+def process_frame(frame):
+    """
+    Process a single BGR frame with MediaPipe Holistic.
+    Returns:
+        annotated_image: The original frame annotated with landmarks.
+        pose_data: 2D + visibility for each pose landmark.
+        left_hand_data: 2D + visibility for each landmark in the left hand.
+        left_hand_angles_data: The angles computed for the left hand joints.
+        right_hand_data: 2D + visibility for each landmark in the right hand.
+        right_hand_angles_data: The angles computed for the right hand joints.
+        face_data: 2D + visibility for each face landmark.
+    """
+    image_rgb = cv2.cvtColor(frame, cv2.COLOR_BGR2RGB)
     results = holistic_model.process(image_rgb)
+    annotated_image = cv2.cvtColor(image_rgb, cv2.COLOR_RGB2BGR)
 
-    landmarks = []
-    
-    def append_landmarks(landmark_list, count):
-        if landmark_list:
-            for lm in landmark_list.landmark:
-                landmarks.extend([lm.x, lm.y, lm.z])
-        else:
-            landmarks.extend([0.0, 0.0, 0.0] * count)  # Fill missing landmarks
+    # Draw landmarks if available
+    if results.face_landmarks:
+        mp_drawing.draw_landmarks(annotated_image, results.face_landmarks, mp_holistic.FACEMESH_TESSELATION)
+    if results.left_hand_landmarks:
+        mp_drawing.draw_landmarks(annotated_image, results.left_hand_landmarks, mp_holistic.HAND_CONNECTIONS)
+    if results.right_hand_landmarks:
+        mp_drawing.draw_landmarks(annotated_image, results.right_hand_landmarks, mp_holistic.HAND_CONNECTIONS)
+    if results.pose_landmarks:
+        mp_drawing.draw_landmarks(annotated_image, results.pose_landmarks, mp_holistic.POSE_CONNECTIONS)
 
-    append_landmarks(results.pose_landmarks, 33)  # Pose: 33 points
-    append_landmarks(results.left_hand_landmarks, 21)  # Left Hand: 21 points
-    append_landmarks(results.right_hand_landmarks, 21)  # Right Hand: 21 points
+    # Extract data
+    def extract_data(landmarks, count):
+        return [[lm.x, lm.y, lm.visibility] for lm in landmarks.landmark] if landmarks else [[0, 0, 0]] * count
 
-    return np.array(landmarks, dtype=np.float32) if landmarks else None, results
+    pose_data = extract_data(results.pose_landmarks, num_pose_landmarks)
+    left_hand_data = extract_data(results.left_hand_landmarks, num_hand_landmarks_per_hand)
+    right_hand_data = extract_data(results.right_hand_landmarks, num_hand_landmarks_per_hand)
+    face_data = extract_data(results.face_landmarks, num_face_landmarks)
+
+    # Compute joint angles for hands
+    left_hand_angles_data = hand_angles(left_hand_data)
+    right_hand_angles_data = hand_angles(right_hand_data)
+
+    return (
+        annotated_image,
+        pose_data,
+        left_hand_data,
+        left_hand_angles_data,
+        right_hand_data,
+        right_hand_angles_data,
+        face_data
+    )
+
+def flatten_landmarks(
+    pose_data,
+    left_hand_data,
+    left_hand_angles_data,
+    right_hand_data,
+    right_hand_angles_data,
+    face_data
+):
+    """
+    Flatten all landmark data and angles into a single 1D list.
+    """
+    pose_flat = [val for landmark in pose_data for val in landmark]
+    left_hand_flat = [val for landmark in left_hand_data for val in landmark]
+    right_hand_flat = [val for landmark in right_hand_data for val in landmark]
+    left_hand_angles_flat = left_hand_angles_data
+    right_hand_angles_flat = right_hand_angles_data
+    face_flat = [val for landmark in face_data for val in landmark]
+
+    return (
+        pose_flat +
+        left_hand_flat +
+        left_hand_angles_flat +
+        right_hand_flat +
+        right_hand_angles_flat +
+        face_flat
+    )
+
+def calculate_velocity(landmarks):
+    """
+    Calculate velocity from landmark coordinates (frame-to-frame displacement).
+    Expected input: NxM array (N frames, M features).
+    """
+    velocities = []
+    for i in range(1, len(landmarks)):
+        velocity = np.linalg.norm(landmarks[i] - landmarks[i-1])
+        velocities.append(velocity)
+    return np.array(velocities)
+
+def calculate_acceleration(velocities):
+    """
+    Calculate acceleration from velocity (frame-to-frame change in velocity).
+    """
+    accelerations = []
+    for i in range(1, len(velocities)):
+        acceleration = np.abs(velocities[i] - velocities[i-1])
+        accelerations.append(acceleration)
+    return np.array(accelerations)
+
+def identify_keyframes(
+    landmarks,
+    velocity_threshold=0.1,
+    acceleration_threshold=0.1
+):
+    """
+    Identify keyframes based on velocity and acceleration thresholds.
+    `landmarks` is a NxM array representing frames (N) by flattened features (M).
+    """
+    velocities = calculate_velocity(landmarks)
+    accelerations = calculate_acceleration(velocities)
+    keyframes = []
+    for i in range(len(accelerations)):
+        if velocities[i] > velocity_threshold or accelerations[i] > acceleration_threshold:
+            keyframes.append(i + 1)  # +1 offset because acceleration index starts at 1
+    return keyframes
 
 # -----------------------------
 # WebRTC Frame Callback for Inference
