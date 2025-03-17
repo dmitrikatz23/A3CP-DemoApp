@@ -367,7 +367,11 @@ def video_frame_callback(frame: av.VideoFrame) -> av.VideoFrame:
 # -----------------------------
 # Hugging Face Setup
 # -----------------------------
-
+hf_token = os.getenv("Recorded_Datasets")
+if not hf_token:
+    st.error("Hugging Face token not found. Please ensure the 'Recorded_Datasets' secret is added in the Space settings.")
+    st.stop()
+    
 hf_api = HfApi()
 model_repo_name = "dk23/A3CP_models"
 LOCAL_MODEL_DIR = "local_models"
