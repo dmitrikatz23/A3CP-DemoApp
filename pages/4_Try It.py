@@ -249,7 +249,7 @@ def identify_keyframes(
     return keyframes
 
 # -----------------------------
-# WebRTC Frame Callback for Inference
+# WebRTC Frame Callback 
 # -----------------------------
 def video_frame_callback(frame: av.VideoFrame) -> av.VideoFrame:
     """Process frame for real-time gesture prediction."""
@@ -359,6 +359,6 @@ with left_col:
             async_processing=True,
         )
 
-with right_col:
-    st.header("Predicted Gesture")
-    st.write(f"**Prediction:** {st.session_state.get('tryit_predicted_text', 'Waiting for input...')}")  
+# with right_col:
+#     st.header("Predicted Gesture")
+#     st.write(f"**Prediction:** {st.session_state.get('tryit_predicted_text', 'Waiting for input...')}")  
