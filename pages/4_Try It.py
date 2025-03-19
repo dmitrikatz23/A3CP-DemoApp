@@ -489,30 +489,30 @@ with left_col:
             async_processing=True,
         )
 
-with right_col:
-    st.header("Predicted Gesture")
+# with right_col:
+#     st.header("Predicted Gesture")
     
-    prediction_placeholder = st.empty()  # Placeholder for dynamic updates
+#     prediction_placeholder = st.empty()  # Placeholder for dynamic updates
     
-    while True:
-        if len(landmark_queue) >= 30 and st.session_state.get("tryit_model"):
-            model = st.session_state["tryit_model"]
-            encoder = st.session_state["tryit_encoder"]
+#     while True:
+#         if len(landmark_queue) >= 30 and st.session_state.get("tryit_model"):
+#             model = st.session_state["tryit_model"]
+#             encoder = st.session_state["tryit_encoder"]
             
-            # Prepare input for the model
-            X_input = np.array(list(landmark_queue)[-30:])  # Last 30 frames
-            X_input = np.expand_dims(X_input, axis=0)  # Shape: (1, sequence_length, num_features)
+#             # Prepare input for the model
+#             X_input = np.array(list(landmark_queue)[-30:])  # Last 30 frames
+#             X_input = np.expand_dims(X_input, axis=0)  # Shape: (1, sequence_length, num_features)
             
-            # Predict gesture
-            y_pred = model.predict(X_input)
-            gesture_index = np.argmax(y_pred, axis=1)[0]
-            gesture_name = encoder.inverse_transform([gesture_index])[0] if np.max(y_pred) > 0.5 else "No gesture detected"
+#             # Predict gesture
+#             y_pred = model.predict(X_input)
+#             gesture_index = np.argmax(y_pred, axis=1)[0]
+#             gesture_name = encoder.inverse_transform([gesture_index])[0] if np.max(y_pred) > 0.5 else "No gesture detected"
             
             
-            # Store prediction in session state
-            st.session_state["tryit_predicted_text"] = gesture_name
+#             # Store prediction in session state
+#             st.session_state["tryit_predicted_text"] = gesture_name
             
-            # Update displayed prediction dynamically
-            prediction_placeholder.write(f"**Prediction:** {gesture_name}")
+#             # Update displayed prediction dynamically
+#             prediction_placeholder.write(f"**Prediction:** {gesture_name}")
             
-        time.sleep(0.5)  # Update interval
+#         time.sleep(0.5)  # Update interval
