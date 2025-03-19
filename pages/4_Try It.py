@@ -1,6 +1,6 @@
 
 #model selector
-
+import logging
 import mediapipe as mp
 from pathlib import Path
 from typing import List, NamedTuple
