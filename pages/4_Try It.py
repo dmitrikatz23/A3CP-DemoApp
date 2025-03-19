@@ -1,5 +1,5 @@
 
-#model selector and mediapipe working...no holistic
+#model selector
 
 import mediapipe as mp
 from pathlib import Path
@@ -26,8 +26,85 @@ sys.path.append(str(Path(__file__).resolve().parent.parent))
 from sample_utils.download import download_file
 from sample_utils.turn import get_ice_servers
 
+# -----------------------------------
+# Logging Setup
+# -----------------------------------
+DEBUG_MODE = False  # Set to True only for debugging
+
+def debug_log(message):
+    if DEBUG_MODE:
+        logging.info(message)
+
+logging.basicConfig(
+    level=logging.WARNING if not DEBUG_MODE else logging.DEBUG,  # Only show debug logs if DEBUG_MODE is True
+    format="%(asctime)s [%(levelname)s] %(message)s",
+    handlers=[
+        logging.StreamHandler(),  
+        logging.FileHandler("app_debug.log", mode='w')  
+    ]
+)
+
+logger = logging.getLogger(__name__)
+logger.info("🚀 Logging is initialized!")
+
+# -----------------------------------
+# Threading and Session State Management
+# -----------------------------------
+
+# Ensure landmark_queue persists across Streamlit reruns
+if "landmark_queue" not in st.session_state:
+    st.session_state.landmark_queue = deque(maxlen=1000)
+
+# Use the stored queue in session state
+landmark_queue = st.session_state.landmark_queue
+
+# Thread-safe lock for WebRTC thread access stored in session state
+if "lock" not in st.session_state:
+    st.session_state.lock = threading.Lock()
+        
+lock = st.session_state.lock
+
+# Initialize landmark_queue_snapshot in session state to prevent KeyError
+if 'landmark_queue_snapshot' not in st.session_state:
+    st.session_state['landmark_queue_snapshot'] = []
+
+# Initialize action_word in session state
+if 'action_word' not in st.session_state:
+    st.session_state['action_word'] = "Unknown_Action"
+
+# Initialize a flag to track streamer state
+if 'streamer_running' not in st.session_state:
+    st.session_state['streamer_running'] = False
+
+def store_landmarks(row_data):
+    with lock:  # Ensures only one thread writes at a time
+        landmark_queue.append(row_data)
+    
+    debug_log(f"Stored {len(landmark_queue)} frames in queue")  # Debugging
+    debug_log(f"First 5 values: {row_data[:5]}")  # Debug first few values
+
+
+def get_landmark_queue():
+    """Thread-safe function to retrieve a copy of the landmark queue."""
+    with lock:
+        queue_snapshot = list(landmark_queue)  # Copy queue safely
+
+    # Store snapshot for session persistence
+    st.session_state.landmark_queue_snapshot = queue_snapshot
+    debug_log(f"🟡 Snapshot taken with {len(queue_snapshot)} frames.")
+
+    return queue_snapshot  # Return the copied queue
+
+
+def clear_landmark_queue():
+    """Thread-safe function to clear the landmark queue."""
+    with lock:
+        debug_log(f"🟡 Clearing queue... Current size: {len(landmark_queue)}")
+        landmark_queue.clear()
+    debug_log("🟡 Landmark queue cleared.")
+
 # -----------------------------
-# Page Configuration
+# Streamlit Page Configuration
 # -----------------------------
 st.set_page_config(page_title="TryIt", layout="wide")
 st.title("TryIt - Inference & Streaming Interface")
@@ -44,24 +121,57 @@ num_hand_landmarks_per_hand = 21
 num_face_landmarks = 468
 
 
-# -----------------------------
-# Hugging Face Setup
-# -----------------------------
-hf_token = os.getenv("Recorded_Datasets")
-if not hf_token:
-    st.error("Hugging Face token not found. Please ensure the 'Recorded_Datasets' secret is set.")
-    st.stop()
+# -----------------------------------
+# Angle Names for Hands
+# -----------------------------------
+angle_names_base = [
+    'thumb_mcp', 'thumb_ip', 
+    'index_mcp', 'index_pip', 'index_dip',
+    'middle_mcp', 'middle_pip', 'middle_dip', 
+    'ring_mcp', 'ring_pip', 'ring_dip', 
+    'little_mcp', 'little_pip', 'little_dip'
+]
+left_hand_angle_names = [f'left_{name}' for name in angle_names_base]
+right_hand_angle_names = [f'right_{name}' for name in angle_names_base]
 
-hf_api = HfApi()
-model_repo_name = "dk23/A3CP_models"
-LOCAL_MODEL_DIR = "local_models"
-os.makedirs(LOCAL_MODEL_DIR, exist_ok=True)
 
-# -----------------------------
-# Load MediaPipe Holistic Model (Cached)
-# -----------------------------
+# -----------------------------------
+# Landmark Header Definitions
+# -----------------------------------
+pose_landmarks = [f'pose_{axis}{i}' for i in range(1, num_pose_landmarks+1) for axis in ['x', 'y', 'v']]
+left_hand_landmarks = [f'left_hand_{axis}{i}' for i in range(1, num_hand_landmarks_per_hand+1) for axis in ['x', 'y', 'v']]
+right_hand_landmarks = [f'right_hand_{axis}{i}' for i in range(1, num_hand_landmarks_per_hand+1) for axis in ['x', 'y', 'v']]
+face_landmarks = [f'face_{axis}{i}' for i in range(1, num_face_landmarks+1) for axis in ['x', 'y', 'v']]
+
+
+# -----------------------------------
+# CSV Header Loader
+# -----------------------------------
+@st.cache_data
+def load_csv_header():
+    """
+    Generate and return the CSV header.
+    """
+    return (
+        ['class', 'sequence_id']
+        + pose_landmarks
+        + left_hand_landmarks
+        + left_hand_angle_names
+        + right_hand_landmarks
+        + right_hand_angle_names
+        + face_landmarks
+    )
+
+header = load_csv_header()
+
+# -----------------------------------
+# MediaPipe Model Loader
+# -----------------------------------
 @st.cache_resource
 def load_mediapipe_model():
+    """
+    Load and cache the MediaPipe Holistic model for optimized video processing.
+    """
     return mp.solutions.holistic.Holistic(
         min_detection_confidence=0.5,
         min_tracking_confidence=0.5,
@@ -69,7 +179,6 @@ def load_mediapipe_model():
     )
 
 holistic_model = load_mediapipe_model()
-
 
 # -----------------------------------
 # Helper Functions
@@ -248,45 +357,65 @@ def identify_keyframes(
             keyframes.append(i + 1)  # +1 offset because acceleration index starts at 1
     return keyframes
 
-# -----------------------------
-# WebRTC Frame Callback 
-# -----------------------------
+# -----------------------------------
+# WebRTC Video Callback
+# -----------------------------------
 def video_frame_callback(frame: av.VideoFrame) -> av.VideoFrame:
-    """Process frame for real-time gesture prediction."""
-    img_bgr = frame.to_ndarray(format="bgr24")
+    input_bgr = frame.to_ndarray(format="bgr24")
+    debug_log("📷 video_frame_callback triggered")  # Debugging
 
-    # Extract landmarks using MediaPipe Holistic
-    landmarks, results = extract_landmarks(img_bgr)
+    # Process frame with MediaPipe
+    (
+        annotated_image,
+        pose_data,
+        left_hand_data,
+        left_hand_angles,
+        right_hand_data,
+        right_hand_angles,
+        face_data
+    ) = process_frame(input_bgr)
 
-    if "tryit_model" in st.session_state and "tryit_encoder" in st.session_state:
-        model = st.session_state["tryit_model"]
-        encoder = st.session_state["tryit_encoder"]
+    if pose_data or left_hand_data or right_hand_data or face_data:
+        debug_log("🟢 Landmarks detected, processing...")
+    else:
+        debug_log("⚠️ No landmarks detected, skipping storage.")
 
-        if landmarks is not None:
-            # Preprocess input
-            landmarks = np.expand_dims(landmarks, axis=0)
-            landmarks = pad_sequences([landmarks], maxlen=100, padding='post', dtype='float32', value=-1.0)
+    # Flatten and store landmarks
+    row_data = flatten_landmarks(
+        pose_data,
+        left_hand_data,
+        left_hand_angles,
+        right_hand_data,
+        right_hand_angles,
+        face_data
+    )
 
-            # Predict gesture
-            predictions = model.predict(landmarks)
-            predicted_label = np.argmax(predictions, axis=1)
-            predicted_text = encoder.inverse_transform(predicted_label)[0]
+    if row_data and any(row_data):  # Ensure data is not empty
+        debug_log("Storing landmarks in queue...")
+        store_landmarks(row_data)
+    else:
+        debug_log("⚠️ No valid landmarks detected. Skipping storage.")
 
-            # Store in session state for UI display
-            st.session_state["tryit_predicted_text"] = predicted_text
-            cv2.putText(img_bgr, f"Prediction: {predicted_text}", (10, 50), cv2.FONT_HERSHEY_SIMPLEX, 1, (0, 255, 0), 2)
-        else:
-            st.session_state["tryit_predicted_text"] = "No Gesture Detected"
+    return av.VideoFrame.from_ndarray(annotated_image, format="bgr24")
 
-    # Draw detected landmarks
-    if results.pose_landmarks:
-        mp_drawing.draw_landmarks(img_bgr, results.pose_landmarks, mp.solutions.holistic.POSE_CONNECTIONS)
-    if results.left_hand_landmarks:
-        mp_drawing.draw_landmarks(img_bgr, results.left_hand_landmarks, mp.solutions.holistic.HAND_CONNECTIONS)
-    if results.right_hand_landmarks:
-        mp_drawing.draw_landmarks(img_bgr, results.right_hand_landmarks, mp.solutions.holistic.HAND_CONNECTIONS)
 
-    return av.VideoFrame.from_ndarray(img_bgr, format="bgr24")
+
+# -----------------------------
+# Hugging Face Setup
+# -----------------------------
+hf_token = os.getenv("Recorded_Datasets")
+if not hf_token:
+    st.error("Hugging Face token not found. Please ensure the 'Recorded_Datasets' secret is set.")
+    st.stop()
+
+hf_api = HfApi()
+model_repo_name = "dk23/A3CP_models"
+LOCAL_MODEL_DIR = "local_models"
+os.makedirs(LOCAL_MODEL_DIR, exist_ok=True)
+
+
+
+
 
 # -----------------------------
 # Sidebar: Model Selection
