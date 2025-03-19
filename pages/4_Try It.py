@@ -505,8 +505,8 @@ with right_col:
             
             # Predict gesture
             y_pred = model.predict(X_input)
-            gesture_index = np.argmax(y_pred, axis=1)[0]
-            gesture_name = encoder.classes_[gesture_index]
+            gesture_name = encoder.inverse_transform([np.argmax(y_pred, axis=1)[0]])[0]
+            
             
             # Store prediction in session state
             st.session_state["tryit_predicted_text"] = gesture_name
