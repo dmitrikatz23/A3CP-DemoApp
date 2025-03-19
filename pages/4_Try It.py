@@ -422,55 +422,83 @@ os.makedirs(LOCAL_MODEL_DIR, exist_ok=True)
 # Sidebar: Model Selection
 # -----------------------------
 @st.cache_data
-def get_model_encoder_pairs():
-    """Retrieve matched model/encoder pairs from Hugging Face."""
+def get_latest_model():
+    """Retrieve the latest model and encoder pair from Hugging Face."""
     repo_files = hf_api.list_repo_files(model_repo_name, repo_type="model", token=hf_token)
-    model_files = [f for f in repo_files if f.endswith(".h5")]
-    encoder_files = [f for f in repo_files if f.endswith(".pkl")]
-
-    pairs = {}
-    for mf in model_files:
-        ts = mf[len("LSTM_model_"):-3]  # Extract timestamp
-        pairs.setdefault(ts, {})["model"] = mf
-    for ef in encoder_files:
-        ts = ef[len("label_encoder_"):-4]  # Extract timestamp
-        pairs.setdefault(ts, {})["encoder"] = ef
-
-    valid_pairs = [(ts, items["model"], items["encoder"]) for ts, items in pairs.items() if "model" in items and "encoder" in items]
-    valid_pairs.sort(key=lambda x: x[0], reverse=True)
-    return valid_pairs
-
-model_encoder_pairs = get_model_encoder_pairs()
-
-with st.sidebar:
-    st.subheader("Select a Model/Encoder Pair")
-    if not model_encoder_pairs:
-        st.warning("No valid model/encoder pairs found.")
+    model_files = sorted([f for f in repo_files if f.endswith(".h5")], reverse=True)
+    encoder_files = sorted([f for f in repo_files if f.endswith(".pkl")], reverse=True)
+    
+    if model_files and encoder_files:
+        latest_model = model_files[0]
+        latest_encoder = encoder_files[0]
+        return latest_model, latest_encoder
     else:
-        pair_options = {f"{ts} | Model: {mf} | Encoder: {ef}": (mf, ef) for ts, mf, ef in model_encoder_pairs}
-        selected_label = st.selectbox("Choose a matched pair:", list(pair_options.keys()))
+        return None, None
 
-        if selected_label:
-            chosen_model, chosen_encoder = pair_options[selected_label]
-            st.write("**Selected Model:**", chosen_model)
-            st.write("**Selected Encoder:**", chosen_encoder)
+latest_model, latest_encoder = get_latest_model()
 
-        if st.button("Confirm Model") and selected_label:
-            st.session_state["tryit_selected_pair"] = pair_options[selected_label]
-            st.session_state["tryit_model_confirmed"] = True
+if latest_model and latest_encoder:
+    st.session_state["tryit_model_confirmed"] = True
+    model_path = hf_hub_download(model_repo_name, latest_model, local_dir=LOCAL_MODEL_DIR, repo_type="model", token=hf_token)
+    encoder_path = hf_hub_download(model_repo_name, latest_encoder, local_dir=LOCAL_MODEL_DIR, repo_type="model", token=hf_token)
+    
+    st.session_state["tryit_model"] = tf.keras.models.load_model(model_path)
+    st.session_state["tryit_encoder"] = joblib.load(encoder_path)
+    st.success(f"Latest model and encoder loaded: {latest_model}, {latest_encoder}")
+else:
+    st.warning("No valid model/encoder pairs found in the repository.")
 
-            model_path = os.path.join(LOCAL_MODEL_DIR, chosen_model)
-            encoder_path = os.path.join(LOCAL_MODEL_DIR, chosen_encoder)
 
-            if not os.path.exists(model_path):
-                hf_hub_download(model_repo_name, chosen_model, local_dir=LOCAL_MODEL_DIR, repo_type="model", token=hf_token)
-            if not os.path.exists(encoder_path):
-                hf_hub_download(model_repo_name, chosen_encoder, local_dir=LOCAL_MODEL_DIR, repo_type="model", token=hf_token)
 
-            # Load Model & Encoder
-            st.session_state["tryit_model"] = tf.keras.models.load_model(model_path)
-            st.session_state["tryit_encoder"] = joblib.load(encoder_path)
-            st.success("Model and encoder loaded successfully!")
+# def get_model_encoder_pairs():
+#     """Retrieve matched model/encoder pairs from Hugging Face."""
+#     repo_files = hf_api.list_repo_files(model_repo_name, repo_type="model", token=hf_token)
+#     model_files = [f for f in repo_files if f.endswith(".h5")]
+#     encoder_files = [f for f in repo_files if f.endswith(".pkl")]
+
+#     pairs = {}
+#     for mf in model_files:
+#         ts = mf[len("LSTM_model_"):-3]  # Extract timestamp
+#         pairs.setdefault(ts, {})["model"] = mf
+#     for ef in encoder_files:
+#         ts = ef[len("label_encoder_"):-4]  # Extract timestamp
+#         pairs.setdefault(ts, {})["encoder"] = ef
+
+#     valid_pairs = [(ts, items["model"], items["encoder"]) for ts, items in pairs.items() if "model" in items and "encoder" in items]
+#     valid_pairs.sort(key=lambda x: x[0], reverse=True)
+#     return valid_pairs
+
+# model_encoder_pairs = get_model_encoder_pairs()
+
+# with st.sidebar:
+#     st.subheader("Select a Model/Encoder Pair")
+#     if not model_encoder_pairs:
+#         st.warning("No valid model/encoder pairs found.")
+#     else:
+#         pair_options = {f"{ts} | Model: {mf} | Encoder: {ef}": (mf, ef) for ts, mf, ef in model_encoder_pairs}
+#         selected_label = st.selectbox("Choose a matched pair:", list(pair_options.keys()))
+
+#         if selected_label:
+#             chosen_model, chosen_encoder = pair_options[selected_label]
+#             st.write("**Selected Model:**", chosen_model)
+#             st.write("**Selected Encoder:**", chosen_encoder)
+
+#         if st.button("Confirm Model") and selected_label:
+#             st.session_state["tryit_selected_pair"] = pair_options[selected_label]
+#             st.session_state["tryit_model_confirmed"] = True
+
+#             model_path = os.path.join(LOCAL_MODEL_DIR, chosen_model)
+#             encoder_path = os.path.join(LOCAL_MODEL_DIR, chosen_encoder)
+
+#             if not os.path.exists(model_path):
+#                 hf_hub_download(model_repo_name, chosen_model, local_dir=LOCAL_MODEL_DIR, repo_type="model", token=hf_token)
+#             if not os.path.exists(encoder_path):
+#                 hf_hub_download(model_repo_name, chosen_encoder, local_dir=LOCAL_MODEL_DIR, repo_type="model", token=hf_token)
+
+#             # Load Model & Encoder
+#             st.session_state["tryit_model"] = tf.keras.models.load_model(model_path)
+#             st.session_state["tryit_encoder"] = joblib.load(encoder_path)
+#             st.success("Model and encoder loaded successfully!")
 
 # -----------------------------
 # Main Layout
