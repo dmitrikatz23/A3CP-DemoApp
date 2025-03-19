@@ -1,5 +1,5 @@
 
-#model selector
+# #model selector
 import logging
 import mediapipe as mp
 from pathlib import Path
@@ -20,6 +20,7 @@ import os
 from collections import deque
 import threading
 import sys
+import time
 from huggingface_hub import Repository, HfApi
 
 sys.path.append(str(Path(__file__).resolve().parent.parent))
@@ -108,6 +109,29 @@ def clear_landmark_queue():
 # -----------------------------
 st.set_page_config(page_title="TryIt", layout="wide")
 st.title("TryIt - Inference & Streaming Interface")
+
+# -----------------------------
+# Model Update Button v. 12:53
+# -----------------------------
+
+def update_model():
+    """Fetch and load the latest model and encoder."""
+    latest_model, latest_encoder = get_latest_model()
+    
+    if latest_model and latest_encoder:
+        st.session_state["tryit_model_confirmed"] = True
+        model_path = hf_hub_download(model_repo_name, latest_model, local_dir=LOCAL_MODEL_DIR, repo_type="model", token=hf_token)
+        encoder_path = hf_hub_download(model_repo_name, latest_encoder, local_dir=LOCAL_MODEL_DIR, repo_type="model", token=hf_token)
+        
+        st.session_state["tryit_model"] = tf.keras.models.load_model(model_path)
+        st.session_state["tryit_encoder"] = joblib.load(encoder_path)
+        st.success(f"Latest model and encoder loaded: {latest_model}, {latest_encoder}")
+    else:
+        st.warning("No valid model/encoder pairs found in the repository.")
+
+
+
+
 
 # -----------------------------------
 # MediaPipe Initialization & Landmark Constants
@@ -421,6 +445,7 @@ os.makedirs(LOCAL_MODEL_DIR, exist_ok=True)
 # Sidebar: Model Selection
 # -----------------------------
 @st.cache_data
+
 def get_model_encoder_pairs():
     """Retrieve matched model/encoder pairs from Hugging Face."""
     repo_files = hf_api.list_repo_files(model_repo_name, repo_type="model", token=hf_token)
@@ -488,7 +513,30 @@ with left_col:
             async_processing=True,
         )
 
-# with right_col:
-#     st.header("Predicted Gesture")
-#     st.write(f"**Prediction:** {st.session_state.get('tryit_predicted_text', 'Waiting for input...')}")  
-
+with right_col:
+    st.header("Predicted Gesture")
+    
+    prediction_placeholder = st.empty()  # Placeholder for dynamic updates
+    
+    while True:
+        if len(landmark_queue) >= 30 and st.session_state.get("tryit_model"):
+            model = st.session_state["tryit_model"]
+            encoder = st.session_state["tryit_encoder"]
+            
+            # Prepare input for the model
+            X_input = np.array(list(landmark_queue)[-30:])  # Last 30 frames
+            X_input = np.expand_dims(X_input, axis=0)  # Shape: (1, sequence_length, num_features)
+            
+            # Predict gesture
+            y_pred = model.predict(X_input)
+            gesture_index = np.argmax(y_pred, axis=1)[0]
+            gesture_name = encoder.inverse_transform([gesture_index])[0] if np.max(y_pred) > 0.5 else "No gesture detected"
+            
+            
+            # Store prediction in session state
+            st.session_state["tryit_predicted_text"] = gesture_name
+            
+            # Update displayed prediction dynamically
+            prediction_placeholder.write(f"**Prediction:** {gesture_name}")
+            
+        time.sleep(0.5)  # Update interval
