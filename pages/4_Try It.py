@@ -488,6 +488,25 @@ with left_col:
             async_processing=True,
         )
 
-# with right_col:
-#     st.header("Predicted Gesture")
-#     st.write(f"**Prediction:** {st.session_state.get('tryit_predicted_text', 'Waiting for input...')}")  
+with right_col:
+    st.header("Predicted Gesture")
+    
+    # Perform classification if enough frames are collected
+    if len(landmark_queue) >= 30 and st.session_state.get("tryit_model"):
+        model = st.session_state["tryit_model"]
+        encoder = st.session_state["tryit_encoder"]
+        
+        # Prepare input for the model
+        X_input = np.array(list(landmark_queue)[-30:])  # Last 30 frames
+        X_input = np.expand_dims(X_input, axis=0)  # Shape: (1, sequence_length, num_features)
+        
+        # Predict gesture
+        y_pred = model.predict(X_input)
+        gesture_index = np.argmax(y_pred, axis=1)[0]
+        gesture_name = encoder.classes_[gesture_index]
+        
+        # Store prediction in session state
+        st.session_state["tryit_predicted_text"] = gesture_name
+        
+    # Display the predicted gesture
+    st.write(f"**Prediction:** {st.session_state.get('tryit_predicted_text', 'Waiting for input...')}")
