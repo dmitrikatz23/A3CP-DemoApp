@@ -450,11 +450,6 @@ def update_model():
     else:
         st.warning("No valid model/encoder pairs found in the repository.")
 
-# -----------------------------
-# Streamlit Page Configuration
-# -----------------------------
-st.set_page_config(page_title="TryIt", layout="wide")
-st.title("TryIt - Inference & Streaming Interface")
 
 # -----------------------------
 # Model Update Button
