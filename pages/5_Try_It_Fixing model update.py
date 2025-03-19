@@ -467,6 +467,9 @@ def get_model_encoder_pairs():
 model_encoder_pairs = get_model_encoder_pairs()
 
 with st.sidebar:
+    if st.button("Refresh Models from Repository"): #new button
+        update_model() #new
+        
     st.subheader("Select a Model/Encoder Pair")
     if not model_encoder_pairs:
         st.warning("No valid model/encoder pairs found.")
