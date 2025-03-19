@@ -425,13 +425,12 @@ os.makedirs(LOCAL_MODEL_DIR, exist_ok=True)
 def get_latest_model():
     # Retrieve the latest model and encoder pair from Hugging Face.
     repo_files = hf_api.list_repo_files(model_repo_name, repo_type="model", token=hf_token)
+    
     model_files = sorted([f for f in repo_files if f.endswith(".h5")], reverse=True)
     encoder_files = sorted([f for f in repo_files if f.endswith(".pkl")], reverse=True)
     
     if model_files and encoder_files:
-        latest_model = model_files[0]
-        latest_encoder = encoder_files[0]
-        return latest_model, latest_encoder
+        return model_files[0], encoder_files[0]
     
     return None, None
 
