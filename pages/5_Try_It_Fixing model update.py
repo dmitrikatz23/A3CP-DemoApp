@@ -421,35 +421,22 @@ LOCAL_MODEL_DIR = "local_models"
 os.makedirs(LOCAL_MODEL_DIR, exist_ok=True)
 
 
+#Retrieve the latest model and encoder pair from Hugging Face with error handling.
 def get_latest_model():
-    """Retrieve the latest model and encoder pair from Hugging Face with error handling."""
-    try:
-    """Retrieve the latest model and encoder pair from Hugging Face."""
-            repo_files = hf_api.list_repo_files(model_repo_name, repo_type="model", token=hf_token)
-        if not repo_files:
-            st.warning("No files found in the repository.")
-            return None, None
-            model_files = sorted([f for f in repo_files if f.endswith(".h5")], reverse=True)
-        if not model_files:
-            st.warning("No model files (.h5) found in the repository.")
-            return None, None
-            encoder_files = sorted([f for f in repo_files if f.endswith(".pkl")], reverse=True)
-        if not encoder_files:
-            st.warning("No encoder files (.pkl) found in the repository.")
-            return None, None
+    # Retrieve the latest model and encoder pair from Hugging Face.
+    repo_files = hf_api.list_repo_files(model_repo_name, repo_type="model", token=hf_token)
+    model_files = sorted([f for f in repo_files if f.endswith(".h5")], reverse=True)
+    encoder_files = sorted([f for f in repo_files if f.endswith(".pkl")], reverse=True)
     
     if model_files and encoder_files:
         latest_model = model_files[0]
         latest_encoder = encoder_files[0]
-                return latest_model, latest_encoder
-    except Exception as e:
-        st.error(f"Error fetching model files: {e}")
-        return None, None
-    else:
-        return None, None
+        return latest_model, latest_encoder
+    
+    return None, None
 
 def update_model():
-    """Fetch and load the latest model and encoder."""
+    #Fetch and load the latest model and encoder.
     latest_model, latest_encoder = get_latest_model()
     
     if latest_model and latest_encoder:
