@@ -505,7 +505,8 @@ with right_col:
             
             # Predict gesture
             y_pred = model.predict(X_input)
-            gesture_name = encoder.inverse_transform([np.argmax(y_pred, axis=1)[0]])[0]
+            gesture_index = np.argmax(y_pred, axis=1)[0]
+            gesture_name = encoder.inverse_transform([gesture_index])[0] if np.max(y_pred) > 0.5 else "No gesture detected"
             
             
             # Store prediction in session state
