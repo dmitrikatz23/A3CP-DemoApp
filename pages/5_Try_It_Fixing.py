@@ -1,24 +1,27 @@
-# working record
 
+# #model selector
 import logging
+import mediapipe as mp
 from pathlib import Path
 from typing import List, NamedTuple
-import mediapipe as mp
 import av
 import cv2
 import numpy as np
 import streamlit as st
-from streamlit_webrtc import WebRtcMode, webrtc_streamer, WebRtcStreamerContext
+from streamlit_webrtc import WebRtcMode, webrtc_streamer
+import tensorflow as tf
+import joblib
+from tensorflow.keras.preprocessing.sequence import pad_sequences
+from huggingface_hub import hf_hub_download, HfApi
+import os
 import re
-import csv
-import time
 import pandas as pd
 import os
-from datetime import datetime
 from collections import deque
 import threading
 import sys
-from huggingface_hub import Repository
+import time
+from huggingface_hub import Repository, HfApi
 
 sys.path.append(str(Path(__file__).resolve().parent.parent))
 from sample_utils.download import download_file
@@ -44,7 +47,6 @@ logging.basicConfig(
 
 logger = logging.getLogger(__name__)
 logger.info("🚀 Logging is initialized!")
-
 
 # -----------------------------------
 # Threading and Session State Management
@@ -102,11 +104,11 @@ def clear_landmark_queue():
         landmark_queue.clear()
     debug_log("🟡 Landmark queue cleared.")
 
-
-# -----------------------------------
+# -----------------------------
 # Streamlit Page Configuration
-# -----------------------------------
-st.set_page_config(layout="wide")
+# -----------------------------
+st.set_page_config(page_title="TryIt", layout="wide")
+st.title("TryIt - Inference & Streaming Interface")
 
 # -----------------------------------
 # MediaPipe Initialization & Landmark Constants
@@ -119,6 +121,7 @@ num_pose_landmarks = 33
 num_hand_landmarks_per_hand = 21
 num_face_landmarks = 468
 
+
 # -----------------------------------
 # Angle Names for Hands
 # -----------------------------------
@@ -129,18 +132,18 @@ angle_names_base = [
     'ring_mcp', 'ring_pip', 'ring_dip', 
     'little_mcp', 'little_pip', 'little_dip'
 ]
-
-# Generate angle names for left and right hands
 left_hand_angle_names = [f'left_{name}' for name in angle_names_base]
 right_hand_angle_names = [f'right_{name}' for name in angle_names_base]
 
+
 # -----------------------------------
-# Generate coordinate labels
+# Landmark Header Definitions
 # -----------------------------------
 pose_landmarks = [f'pose_{axis}{i}' for i in range(1, num_pose_landmarks+1) for axis in ['x', 'y', 'v']]
 left_hand_landmarks = [f'left_hand_{axis}{i}' for i in range(1, num_hand_landmarks_per_hand+1) for axis in ['x', 'y', 'v']]
 right_hand_landmarks = [f'right_hand_{axis}{i}' for i in range(1, num_hand_landmarks_per_hand+1) for axis in ['x', 'y', 'v']]
 face_landmarks = [f'face_{axis}{i}' for i in range(1, num_face_landmarks+1) for axis in ['x', 'y', 'v']]
+
 
 # -----------------------------------
 # CSV Header Loader
@@ -397,143 +400,87 @@ def video_frame_callback(frame: av.VideoFrame) -> av.VideoFrame:
     return av.VideoFrame.from_ndarray(annotated_image, format="bgr24")
 
 
-# -----------------------------------
-# Hugging Face integration
-# -----------------------------------
-# Load Hugging Face token from environment variables
+
+# -----------------------------
+# Hugging Face Setup
+# -----------------------------
 hf_token = os.getenv("Recorded_Datasets")
 if not hf_token:
-    st.error("Hugging Face token not found. Please ensure the 'Recorded_Datasets' secret is added in the Space settings.")
+    st.error("Hugging Face token not found. Please ensure the 'Recorded_Datasets' secret is set.")
     st.stop()
 
-# Hugging Face repository details
-repo_name = "dk23/A3CP_actions"
-local_repo_path = "local_repo"
-
-# Configure generic Git identity
-git_user = "A3CP_bot"
-git_email = "no-reply@huggingface.co"
-
-# Clone or create the Hugging Face repository
-repo = Repository(local_dir=local_repo_path, clone_from=repo_name, use_auth_token=hf_token, repo_type="dataset")
-
-# Configure Git user details
-repo.git_config_username_and_email(git_user, git_email)
-
-def save_to_huggingface(csv_path):
-    # Get current timestamp, user name, and action word from session state.
-    timestamp = datetime.now().strftime("%Y-%m-%d_%H-%M-%S")
-    uname = st.session_state.get("user_name", "unknown") or "unknown"
-    action_class = st.session_state.get("action_word", "Unknown_Action")
-    
-    # Use the updated naming scheme in the repository filename.
-    repo_csv_filename = f"{uname}_{action_class}_{timestamp}.csv"
-    repo_csv_path = os.path.join(local_repo_path, repo_csv_filename)
-
-    # Ensure local repo directory exists.
-    os.makedirs(local_repo_path, exist_ok=True)
-
-    # Copy the CSV to the repository folder.
-    df = pd.read_csv(csv_path)
-    df.to_csv(repo_csv_path, index=False)
-
-    # Add, commit, and push to Hugging Face.
-    repo.git_add(repo_csv_filename)
-    repo.git_commit(f"Update {action_class} CSV by {uname} ({timestamp})")
-    repo.git_push()
-
-    st.success(f"CSV saved to Hugging Face repository: {repo_name} as {repo_csv_filename}")
+hf_api = HfApi()
+model_repo_name = "dk23/A3CP_models"
+LOCAL_MODEL_DIR = "local_models"
+os.makedirs(LOCAL_MODEL_DIR, exist_ok=True)
 
 
 
-# -----------------------------------
-# CSV Setup
-# -----------------------------------
-csv_folder = "csv"
-if not os.path.exists(csv_folder):
-    os.makedirs(csv_folder)
+# -----------------------------
+# Sidebar: Model Selection
+# -----------------------------
+@st.cache_data
 
-# Define the master CSV file path
-master_csv_file = os.path.join(csv_folder, "all_actions.csv")
+def get_model_encoder_pairs():
+    """Retrieve matched model/encoder pairs from Hugging Face."""
+    repo_files = hf_api.list_repo_files(model_repo_name, repo_type="model", token=hf_token)
+    model_files = [f for f in repo_files if f.endswith(".h5")]
+    encoder_files = [f for f in repo_files if f.endswith(".pkl")]
 
-# Store master_csv_file in session state for easy access
-st.session_state["master_csv_file"] = master_csv_file
+    pairs = {}
+    for mf in model_files:
+        ts = mf[len("LSTM_model_"):-3]  # Extract timestamp
+        pairs.setdefault(ts, {})["model"] = mf
+    for ef in encoder_files:
+        ts = ef[len("label_encoder_"):-4]  # Extract timestamp
+        pairs.setdefault(ts, {})["encoder"] = ef
 
-# Initialize master CSV with header if it doesn't exist
-if "csv_initialized" not in st.session_state:
-    if not os.path.exists(master_csv_file):
-        with open(master_csv_file, mode='w', newline='') as f:
-            csv_writer = csv.writer(f)
-            csv_writer.writerow(header)
-        debug_log(f"🟡 Master CSV '{master_csv_file}' initialized with header.")
-    st.session_state["csv_initialized"] = True
+    valid_pairs = [(ts, items["model"], items["encoder"]) for ts, items in pairs.items() if "model" in items and "encoder" in items]
+    valid_pairs.sort(key=lambda x: x[0], reverse=True)
+    return valid_pairs
 
-# -----------------------------------
-# Streamlit UI and Logic
-# -----------------------------------
-st.title("Record an Action")
+model_encoder_pairs = get_model_encoder_pairs()
 
-# Initialize session state variables for handling actions, sequences, etc.
-if 'actions' not in st.session_state:
-    st.session_state['actions'] = {}
-if 'record_started' not in st.session_state:
-    st.session_state['record_started'] = False
-if 'sequence_id' not in st.session_state:
-    st.session_state['sequence_id'] = 0
-if 'action_confirmed' not in st.session_state:
-    st.session_state['action_confirmed'] = False
-if 'active_streamer_key' not in st.session_state:
-    st.session_state['active_streamer_key'] = None
-if 'landmark_queue_snapshot' not in st.session_state:
-    st.session_state['landmark_queue_snapshot'] = []
-if 'action_word' not in st.session_state:
-    st.session_state['action_word'] = "Unknown_Action"
+with st.sidebar:
+    st.subheader("Select a Model/Encoder Pair")
+    if not model_encoder_pairs:
+        st.warning("No valid model/encoder pairs found.")
+    else:
+        pair_options = {f"{ts} | Model: {mf} | Encoder: {ef}": (mf, ef) for ts, mf, ef in model_encoder_pairs}
+        selected_label = st.selectbox("Choose a matched pair:", list(pair_options.keys()))
 
+        if selected_label:
+            chosen_model, chosen_encoder = pair_options[selected_label]
+            st.write("**Selected Model:**", chosen_model)
+            st.write("**Selected Encoder:**", chosen_encoder)
+
+        if st.button("Confirm Model") and selected_label:
+            st.session_state["tryit_selected_pair"] = pair_options[selected_label]
+            st.session_state["tryit_model_confirmed"] = True
+
+            model_path = os.path.join(LOCAL_MODEL_DIR, chosen_model)
+            encoder_path = os.path.join(LOCAL_MODEL_DIR, chosen_encoder)
+
+            if not os.path.exists(model_path):
+                hf_hub_download(model_repo_name, chosen_model, local_dir=LOCAL_MODEL_DIR, repo_type="model", token=hf_token)
+            if not os.path.exists(encoder_path):
+                hf_hub_download(model_repo_name, chosen_encoder, local_dir=LOCAL_MODEL_DIR, repo_type="model", token=hf_token)
+
+            # Load Model & Encoder
+            st.session_state["tryit_model"] = tf.keras.models.load_model(model_path)
+            st.session_state["tryit_encoder"] = joblib.load(encoder_path)
+            st.success("Model and encoder loaded successfully!")
+
+# -----------------------------
+# Main Layout
+# -----------------------------
 left_col, right_col = st.columns([1, 2])
-FRAME_WINDOW = right_col.image([])
-status_bar = right_col.empty()
 
-file_exists = os.path.isfile(master_csv_file)
-
-# -----------------------------------
-# Left Column: Controls
-# -----------------------------------
 with left_col:
-    # Prompt for user name and store it in session state.
-    user_name = st.text_input("Enter your user name:", value=st.session_state.get("user_name", ""))
-    st.session_state["user_name"] = user_name
-
-    action_word = st.text_input("Enter the intended meaning for the action e.g. I'm hungry")
-
-    # Confirm Action button
-    if st.button("Confirm Action") and action_word:
-        # Sanitize action word for internal use
-        sanitized_action_word = re.sub(r'[^a-zA-Z0-9_]', '_', action_word.strip())
-
-        # If an active streamer already exists, clear its state
-        if st.session_state.get('active_streamer_key') is not None:
-            st.session_state['action_confirmed'] = False
-            old_key = st.session_state['active_streamer_key']
-            if old_key in st.session_state:
-                del st.session_state[old_key]
-
-        # Prepare for a new action
-        st.session_state['actions'][action_word] = None
-        st.session_state['action_confirmed'] = True
-        st.session_state['active_streamer_key'] = f"record-actions-{sanitized_action_word}"
-        st.session_state['action_word'] = action_word  # Store the action word in session state
-
-        st.success(f"Action '{action_word}' confirmed!")
-
-
-    # If an action has been confirmed, show the WebRTC streamer
-    if st.session_state.get('action_confirmed', False):
-        streamer_key = st.session_state['active_streamer_key']
-        st.info(f"Streaming activated! Perform the action: {action_word}")
-
-        # Launch Streamlit WebRTC streamer and assign it to a variable
-        webrtc_ctx = webrtc_streamer(
-            key=streamer_key,
+    st.header("WebRTC Stream")
+    if st.session_state.get("tryit_model_confirmed"):
+        webrtc_streamer(
+            key="tryit-stream",
             mode=WebRtcMode.SENDRECV,
             rtc_configuration={"iceServers": get_ice_servers(), "iceTransportPolicy": "relay"},
             media_stream_constraints={"video": True, "audio": False},
@@ -541,98 +488,30 @@ with left_col:
             async_processing=True,
         )
 
-        # Update streamer_running flag based on streamer state
-        if webrtc_ctx.state.playing:
-            st.session_state['streamer_running'] = True
-        else:
-            if st.session_state['streamer_running']:
-                # Streamer has just stopped
-                st.session_state['streamer_running'] = False
-                # Snapshot the queue
-                st.session_state["landmark_queue_snapshot"] = list(landmark_queue)
-                debug_log(f"🟡 Snapshot taken with {len(st.session_state['landmark_queue_snapshot'])} frames.")
-                st.success("Streaming has stopped. You can now save keyframes.")
-
-
-with left_col:
-    if st.button("Save Keyframes to CSV"):
-
-        # Retrieve snapshot or fall back to the queue
-        if "landmark_queue_snapshot" in st.session_state:
-            landmark_data = st.session_state.landmark_queue_snapshot
-        else:
-            landmark_data = get_landmark_queue()
-
-        debug_log(f"🟡 Current queue size BEFORE saving: {len(landmark_data)}")
-
-        if len(landmark_data) > 1:
-            all_rows = []
-            flat_landmarks_per_frame = np.array(landmark_data)
-
-            keyframes = identify_keyframes(
-                flat_landmarks_per_frame,
-                velocity_threshold=0.1,
-                acceleration_threshold=0.1
-            )
-
-            for kf in keyframes:
-                if kf < len(flat_landmarks_per_frame):
-                    st.session_state['sequence_id'] += 1
-                    row_data = flat_landmarks_per_frame[kf]
-                    
-                    # Retrieve the action word from session state
-                    action_class = st.session_state.get("action_word", "Unknown_Action")
-
-                    # Construct the row with the action word in the 'class' column
-                    row = [action_class, st.session_state['sequence_id']] + row_data.tolist()
-                    all_rows.append(row)
-
-            if all_rows:
-                # Use the user name and action in the filename.
-                # Ensure user_name is not empty, otherwise use "unknown"
-                uname = st.session_state.get("user_name", "unknown") or "unknown"
-                csv_filename = f"{uname}_{action_class}_{datetime.now().strftime('%Y-%m-%d_%H-%M-%S')}.csv"
-                csv_path = os.path.join("csv", csv_filename)
-
-                # Check if the CSV exists, append if necessary
-                if os.path.exists(csv_path):
-                    existing_df = pd.read_csv(csv_path)
-                    new_df = pd.DataFrame(all_rows, columns=header)
-                    updated_df = pd.concat([existing_df, new_df], ignore_index=True)
-                    updated_df.to_csv(csv_path, index=False)
-                else:
-                    with open(csv_path, mode='w', newline='') as f:
-                        csv_writer = csv.writer(f)
-                        csv_writer.writerow(header)
-                        csv_writer.writerows(all_rows)
-
-                st.session_state["last_saved_csv"] = csv_path
-                st.success(f"Keyframes saved to {csv_filename}")
-
-                # Upload the CSV to Hugging Face
-                try:
-                    save_to_huggingface(csv_path)
-                except Exception as e:
-                    st.error(f"Failed to save to Hugging Face repository: {e}")
-
-                clear_landmark_queue()
-            else:
-                st.warning("⚠️ No keyframes detected. Try again.")
-        else:
-            debug_log("🟡 Retrieved 0 frames for saving.")
-            st.warning("⚠️ Landmark queue is empty! Nothing to save.")
-
-
-   
-with left_col:
-    # Display the saved CSV preview
-    if "last_saved_csv" in st.session_state:
-        st.subheader("Saved Keyframes CSV Preview:")
-        
-        # Read only the first 5 columns
-        df_display = pd.read_csv(st.session_state["last_saved_csv"], usecols=range(5))
-        
-        # Display the first 5 columns
-        st.dataframe(df_display)
-
-
+with right_col:
+    st.header("Predicted Gesture")
+    
+    prediction_placeholder = st.empty()  # Placeholder for dynamic updates
+    
+    while True:
+        if len(landmark_queue) >= 30 and st.session_state.get("tryit_model"):
+            model = st.session_state["tryit_model"]
+            encoder = st.session_state["tryit_encoder"]
+            
+            # Prepare input for the model
+            X_input = np.array(list(landmark_queue)[-30:])  # Last 30 frames
+            X_input = np.expand_dims(X_input, axis=0)  # Shape: (1, sequence_length, num_features)
+            
+            # Predict gesture
+            y_pred = model.predict(X_input)
+            gesture_index = np.argmax(y_pred, axis=1)[0]
+            gesture_name = encoder.inverse_transform([gesture_index])[0] if np.max(y_pred) > 0.5 else "No gesture detected"
+            
+            
+            # Store prediction in session state
+            st.session_state["tryit_predicted_text"] = gesture_name
+            
+            # Update displayed prediction dynamically
+            prediction_placeholder.write(f"**Prediction:** {gesture_name}")
+            
+        time.sleep(0.5)  # Update interval
