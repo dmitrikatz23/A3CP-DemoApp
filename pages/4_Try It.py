@@ -502,11 +502,16 @@ with right_col:
             # X_input = np.array(list(landmark_queue)[-30:])  # Last 30 frames
             # X_input = np.expand_dims(X_input, axis=0)  # Shape: (1, sequence_length, num_features)
             sequence = list(landmark_queue)[-30:]
-            X_input = pad_sequences([sequence], maxlen=30, padding='post', dtype='float32', value=-1.0)
+            if len(sequence) < 30:
+                # Pad manually to 30 frames with zeros (or -1.0)
+                padding = [[-1.0] * len(sequence[0])] * (30 - len(sequence))
+                sequence += padding
+
+            X_input = np.expand_dims(np.array(sequence), axis=0)
 
             
             # Predict gesture
-            y_pred = model.predict(X_input)
+            y_pred = model.predict(X_input) 
             gesture_index = np.argmax(y_pred, axis=1)[0]
             gesture_name = encoder.inverse_transform([gesture_index])[0] if np.max(y_pred) > 0.5 else "No gesture detected"
             
