@@ -502,17 +502,14 @@ with right_col:
     prediction_placeholder = st.empty()  # Placeholder for dynamic updates
     
     while True:
-        if len(landmark_queue) >= 30 and st.session_state.get("tryit_model"):
+        if len(landmark_queue) >= 11 and st.session_state.get("tryit_model"):
             model = st.session_state["tryit_model"]
             encoder = st.session_state["tryit_encoder"]
             
             # Prepare input for the model
-            # X_input = np.array(list(landmark_queue)[-30:])  # Last 30 frames
-            # X_input = np.expand_dims(X_input, axis=0)  # Shape: (1, sequence_length, num_features)
-            sequence = list(landmark_queue)[-30:]
-            if len(sequence) < 30:
-                # Pad manually to 30 frames with zeros (or -1.0)
-                padding = [[-1.0] * len(sequence[0])] * (30 - len(sequence))
+            sequence = list(landmark_queue)[-11:]
+            if len(sequence) < 11:
+                padding = [[-1.0] * len(sequence[0])] * (11 - len(sequence))
                 sequence += padding
 
             X_input = np.expand_dims(np.array(sequence), axis=0)
