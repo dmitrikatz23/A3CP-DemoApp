@@ -18,11 +18,12 @@ from datetime import datetime
 from collections import deque
 import threading
 import sys
-from huggingface_hub import Repository
+from huggingface_hub import Repository, hf_hub_upload
 
 sys.path.append(str(Path(__file__).resolve().parent.parent))
 from sample_utils.download import download_file
 from sample_utils.turn import get_ice_servers
+
 
 # -----------------------------------
 # Logging Setup
@@ -424,31 +425,36 @@ repo = Repository(local_dir=local_repo_path, clone_from=repo_name, use_auth_toke
 
 
 # Configure Git user details
-repo.git_config_username_and_email(git_user, git_email)
+#repo.git_config_username_and_email(git_user, git_email)
+
 
 def save_to_huggingface(csv_path):
-    # Get current timestamp, user name, and action word from session state.
+    """
+    Uploads the CSV file directly to Hugging Face Dataset repo using hf_hub_upload.
+    """
+    from huggingface_hub import HfApi
+
+    # Get metadata from session
     timestamp = datetime.now().strftime("%Y-%m-%d_%H-%M-%S")
     uname = st.session_state.get("user_name", "unknown") or "unknown"
     action_class = st.session_state.get("action_word", "Unknown_Action")
-    
-    # Use the updated naming scheme in the repository filename.
-    repo_csv_filename = f"{uname}_{action_class}_{timestamp}.csv"
-    repo_csv_path = os.path.join(local_repo_path, repo_csv_filename)
 
-    # Ensure local repo directory exists.
-    os.makedirs(local_repo_path, exist_ok=True)
+    # Construct file name for upload
+    repo_filename = f"{uname}_{action_class}_{timestamp}.csv"
 
-    # Copy the CSV to the repository folder.
-    df = pd.read_csv(csv_path)
-    df.to_csv(repo_csv_path, index=False)
+    try:
+        hf_hub_upload(
+            repo_id="dk23/A3CP_actions",
+            path_or_fileobj=csv_path,
+            path_in_repo=repo_filename,
+            repo_type="dataset",
+            token=hf_token,
+        )
+        st.success(f"📤 CSV uploaded to Hugging Face dataset repo as `{repo_filename}`")
 
-    # Add, commit, and push to Hugging Face.
-    repo.git_add(repo_csv_filename)
-    repo.git_commit(f"Update {action_class} CSV by {uname} ({timestamp})")
-    repo.git_push()
+    except Exception as e:
+        st.error(f"🚫 Failed to upload to Hugging Face: {e}")
 
-    st.success(f"CSV saved to Hugging Face repository: {repo_name} as {repo_csv_filename}")
 
 
 
