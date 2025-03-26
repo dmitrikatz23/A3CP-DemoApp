@@ -170,3 +170,21 @@ if st.button("Train Model") and selected_csvs:
     st.success(
         f"Model and label encoder saved and uploaded to Hugging Face as '{model_filename}' and '{encoder_filename}'!"
     )
+
+###temp to check if classes in .pkl
+import joblib
+import os
+
+MODEL_DIR = "local_models"
+
+# Find most recent encoder file
+encoder_files = [f for f in os.listdir(MODEL_DIR) if f.endswith(".pkl")]
+if encoder_files:
+    latest_encoder = max(encoder_files, key=lambda x: os.path.getctime(os.path.join(MODEL_DIR, x)))
+    encoder_path = os.path.join(MODEL_DIR, latest_encoder)
+
+    encoder = joblib.load(encoder_path)
+    st.subheader("🔍 Model Debug Info")
+    st.write("**Encoder Classes:**", list(encoder.classes_))
+else:
+    st.warning("No encoder file found in local_models.")
