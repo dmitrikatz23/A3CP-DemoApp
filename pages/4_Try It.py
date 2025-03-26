@@ -416,13 +416,10 @@ os.makedirs(LOCAL_MODEL_DIR, exist_ok=True)
 
 
 
-
-
 # -----------------------------
 # Sidebar: Model Selection
 # -----------------------------
-@st.cache_data
-
+#@st.cache_data
 
 def get_model_encoder_pairs():
     """Retrieve matched model/encoder pairs from Hugging Face."""
