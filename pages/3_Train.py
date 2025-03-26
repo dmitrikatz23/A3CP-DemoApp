@@ -93,7 +93,7 @@ if st.button("Train Model") and selected_csvs:
         labels.append(sequence_df['class'].iloc[0])
 
     # Pad sequences
-    X = pad_sequences(sequences, padding='post', dtype='float32', value=-1.0)
+    X = pad_sequences(sequences, maxlen= 30, padding='post', dtype='float32', value=-1.0)
     
     # Encode labels
     le = LabelEncoder()

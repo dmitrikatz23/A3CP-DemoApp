@@ -502,23 +502,27 @@ with right_col:
     prediction_placeholder = st.empty()  # Placeholder for dynamic updates
     
     while True:
-        if len(landmark_queue) >= 11 and st.session_state.get("tryit_model"):
+        if len(landmark_queue) >= 30 and st.session_state.get("tryit_model"):
             model = st.session_state["tryit_model"]
             encoder = st.session_state["tryit_encoder"]
             
             # Prepare input for the model
-            sequence = list(landmark_queue)[-11:]
-            if len(sequence) < 11:
-                padding = [[-1.0] * len(sequence[0])] * (11 - len(sequence))
+            sequence = list(landmark_queue)[-30:]
+            if len(sequence) < 30:
+                padding = [[-1.0] * len(sequence[0])] * (30 - len(sequence))
                 sequence += padding
 
             X_input = np.expand_dims(np.array(sequence), axis=0)
 
             
             # Predict gesture
-            y_pred = model.predict(X_input) 
+            y_pred = model.predict(X_input)
             gesture_index = np.argmax(y_pred, axis=1)[0]
-            gesture_name = encoder.inverse_transform([gesture_index])[0] if np.max(y_pred) > 0.5 else "No gesture detected"
+            gesture_name = (
+                encoder.inverse_transform([gesture_index])[0]
+                if np.max(y_pred) > 0.5
+                else "No gesture detected"
+            )
             
             
             # Store prediction in session state
