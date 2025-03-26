@@ -19,10 +19,12 @@ from collections import deque
 import threading
 import sys
 from huggingface_hub import Repository
+from huggingface_hub import upload_file
 
 sys.path.append(str(Path(__file__).resolve().parent.parent))
 from sample_utils.download import download_file
 from sample_utils.turn import get_ice_servers
+
 
 # -----------------------------------
 # Logging Setup
@@ -414,6 +416,7 @@ local_repo_path = "local_repo"
 git_user = "A3CP_bot"
 git_email = "no-reply@huggingface.co"
 
+
 # Clone or create the Hugging Face repository
 # new Clean up if local_repo exists but isn't a git repo
 if os.path.exists(local_repo_path) and not os.path.exists(os.path.join(local_repo_path, ".git")):
@@ -421,32 +424,34 @@ if os.path.exists(local_repo_path) and not os.path.exists(os.path.join(local_rep
     shutil.rmtree(local_repo_path)
 repo = Repository(local_dir=local_repo_path, clone_from=repo_name, use_auth_token=hf_token, repo_type="dataset")
 
+
 # Configure Git user details
-repo.git_config_username_and_email(git_user, git_email)
+#repo.git_config_username_and_email(git_user, git_email)
+
 
 def save_to_huggingface(csv_path):
-    # Get current timestamp, user name, and action word from session state.
+    """
+    Uploads the CSV file to Hugging Face Dataset repo using `upload_file`.
+    """
     timestamp = datetime.now().strftime("%Y-%m-%d_%H-%M-%S")
     uname = st.session_state.get("user_name", "unknown") or "unknown"
     action_class = st.session_state.get("action_word", "Unknown_Action")
-    
-    # Use the updated naming scheme in the repository filename.
-    repo_csv_filename = f"{uname}_{action_class}_{timestamp}.csv"
-    repo_csv_path = os.path.join(local_repo_path, repo_csv_filename)
 
-    # Ensure local repo directory exists.
-    os.makedirs(local_repo_path, exist_ok=True)
+    filename = f"{uname}_{action_class}_{timestamp}.csv"
 
-    # Copy the CSV to the repository folder.
-    df = pd.read_csv(csv_path)
-    df.to_csv(repo_csv_path, index=False)
+    try:
+        upload_file(
+            path_or_fileobj=csv_path,
+            path_in_repo=filename,
+            repo_id="dk23/A3CP_actions",
+            repo_type="dataset",
+            token=hf_token,
+        )
+        st.success(f"📤 Uploaded to Hugging Face as `{filename}`")
 
-    # Add, commit, and push to Hugging Face.
-    repo.git_add(repo_csv_filename)
-    repo.git_commit(f"Update {action_class} CSV by {uname} ({timestamp})")
-    repo.git_push()
+    except Exception as e:
+        st.error(f"🚫 Failed to upload: {e}")
 
-    st.success(f"CSV saved to Hugging Face repository: {repo_name} as {repo_csv_filename}")
 
 
 
@@ -579,17 +584,35 @@ with left_col:
                 acceleration_threshold=0.1
             )
 
+            #attempt to fix bug
+            frame_window = 5  # Number of frames before and after the keyframe
+
             for kf in keyframes:
                 if kf < len(flat_landmarks_per_frame):
                     st.session_state['sequence_id'] += 1
-                    row_data = flat_landmarks_per_frame[kf]
-                    
-                    # Retrieve the action word from session state
-                    action_class = st.session_state.get("action_word", "Unknown_Action")
+                    start_idx = max(0, kf - frame_window)
+                    end_idx = min(len(flat_landmarks_per_frame), kf + frame_window + 1)
 
-                    # Construct the row with the action word in the 'class' column
-                    row = [action_class, st.session_state['sequence_id']] + row_data.tolist()
-                    all_rows.append(row)
+                    for idx in range(start_idx, end_idx):
+                        row_data = flat_landmarks_per_frame[idx]
+                        action_class = st.session_state.get("action_word", "Unknown_Action")
+                        row = [action_class, st.session_state['sequence_id']] + row_data.tolist()
+                        all_rows.append(row)
+
+
+
+            # old version
+            # for kf in keyframes:
+            #     if kf < len(flat_landmarks_per_frame):
+            #         st.session_state['sequence_id'] += 1
+            #         row_data = flat_landmarks_per_frame[kf]
+                    
+            #         # Retrieve the action word from session state
+            #         action_class = st.session_state.get("action_word", "Unknown_Action")
+
+            #         # Construct the row with the action word in the 'class' column
+            #         row = [action_class, st.session_state['sequence_id']] + row_data.tolist()
+            #         all_rows.append(row)
 
             if all_rows:
                 # Use the user name and action in the filename.
