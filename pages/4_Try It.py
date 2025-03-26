@@ -499,8 +499,11 @@ with right_col:
             encoder = st.session_state["tryit_encoder"]
             
             # Prepare input for the model
-            X_input = np.array(list(landmark_queue)[-30:])  # Last 30 frames
-            X_input = np.expand_dims(X_input, axis=0)  # Shape: (1, sequence_length, num_features)
+            # X_input = np.array(list(landmark_queue)[-30:])  # Last 30 frames
+            # X_input = np.expand_dims(X_input, axis=0)  # Shape: (1, sequence_length, num_features)
+            sequence = list(landmark_queue)[-30:]
+            X_input = pad_sequences([sequence], maxlen=30, padding='post', dtype='float32', value=-1.0)
+
             
             # Predict gesture
             y_pred = model.predict(X_input)
