@@ -470,6 +470,11 @@ with st.sidebar:
             st.session_state["tryit_model"] = tf.keras.models.load_model(model_path)
             st.session_state["tryit_encoder"] = joblib.load(encoder_path)
             st.success("Model and encoder loaded successfully!")
+            
+            #this is debug to be deleted later
+            with st.expander("🔍 Model & Encoder Debug Info"):
+                model.summary(print_fn=lambda x: st.text(x))
+                st.write("Encoder classes:", encoder.classes_)
 
 # -----------------------------
 # Main Layout
