@@ -174,17 +174,37 @@ if st.button("Train Model") and selected_csvs:
 ###temp to check if classes in .pkl
 import joblib
 import os
+from huggingface_hub import hf_hub_download
 
 MODEL_DIR = "local_models"
+os.makedirs(MODEL_DIR, exist_ok=True)
 
+# Try downloading the most recent files just after upload
+try:
+    model_path = hf_hub_download(
+        repo_id=model_repo_name,
+        filename=model_filename,
+        repo_type="model",
+        local_dir=MODEL_DIR,
+        token=hf_token
+    )
+    encoder_path = hf_hub_download(
+        repo_id=model_repo_name,
+        filename=encoder_filename,
+        repo_type="model",
+        local_dir=MODEL_DIR,
+        token=hf_token
+    )
+except Exception as e:
+    st.warning(f"Could not download most recent model: {e}")
+
+# Persistent debug panel that works across sessions
 st.subheader("🔍 Model Debug Info")
-
 if os.path.exists(MODEL_DIR):
     encoder_files = [f for f in os.listdir(MODEL_DIR) if f.endswith(".pkl")]
     if encoder_files:
         latest_encoder = max(encoder_files, key=lambda x: os.path.getctime(os.path.join(MODEL_DIR, x)))
         encoder_path = os.path.join(MODEL_DIR, latest_encoder)
-
         encoder = joblib.load(encoder_path)
         st.write("**Encoder Classes:**", list(encoder.classes_))
     else:
