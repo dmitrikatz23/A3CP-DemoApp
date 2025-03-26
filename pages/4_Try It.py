@@ -472,6 +472,9 @@ with st.sidebar:
             st.success("Model and encoder loaded successfully!")
             
             #this is debug to be deleted later
+            model = tf.keras.models.load_model(model_path)
+            encoder = joblib.load(encoder_path)
+
             with st.expander("🔍 Model & Encoder Debug Info"):
                 model.summary(print_fn=lambda x: st.text(x))
                 st.write("Encoder classes:", encoder.classes_)
