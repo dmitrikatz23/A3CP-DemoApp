@@ -414,8 +414,14 @@ local_repo_path = "local_repo"
 git_user = "A3CP_bot"
 git_email = "no-reply@huggingface.co"
 
+
 # Clone or create the Hugging Face repository
+# new Clean up if local_repo exists but isn't a git repo
+if os.path.exists(local_repo_path) and not os.path.exists(os.path.join(local_repo_path, ".git")):
+    import shutil
+    shutil.rmtree(local_repo_path)
 repo = Repository(local_dir=local_repo_path, clone_from=repo_name, use_auth_token=hf_token, repo_type="dataset")
+
 
 # Configure Git user details
 repo.git_config_username_and_email(git_user, git_email)
