@@ -177,14 +177,17 @@ import os
 
 MODEL_DIR = "local_models"
 
-# Find most recent encoder file
-encoder_files = [f for f in os.listdir(MODEL_DIR) if f.endswith(".pkl")]
-if encoder_files:
-    latest_encoder = max(encoder_files, key=lambda x: os.path.getctime(os.path.join(MODEL_DIR, x)))
-    encoder_path = os.path.join(MODEL_DIR, latest_encoder)
+st.subheader("🔍 Model Debug Info")
 
-    encoder = joblib.load(encoder_path)
-    st.subheader("🔍 Model Debug Info")
-    st.write("**Encoder Classes:**", list(encoder.classes_))
+if os.path.exists(MODEL_DIR):
+    encoder_files = [f for f in os.listdir(MODEL_DIR) if f.endswith(".pkl")]
+    if encoder_files:
+        latest_encoder = max(encoder_files, key=lambda x: os.path.getctime(os.path.join(MODEL_DIR, x)))
+        encoder_path = os.path.join(MODEL_DIR, latest_encoder)
+
+        encoder = joblib.load(encoder_path)
+        st.write("**Encoder Classes:**", list(encoder.classes_))
+    else:
+        st.warning("No encoder files (.pkl) found in local_models.")
 else:
-    st.warning("No encoder file found in local_models.")
+    st.warning("⚠️ 'local_models' folder does not exist yet. Train a model first.")
