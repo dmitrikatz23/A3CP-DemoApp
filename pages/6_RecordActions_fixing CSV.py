@@ -108,8 +108,16 @@ def clear_landmark_queue():
 # -----------------------------------
 st.set_page_config(layout="wide")
 
-#For CSV
+# -----------------------------------
+# MediaPipe Initialization & Landmark Constants
+# -----------------------------------
+mp_drawing = mp.solutions.drawing_utils
+mp_holistic = mp.solutions.holistic
 
+# Number of landmarks in various MediaPipe models
+num_pose_landmarks = 33
+num_hand_landmarks_per_hand = 21
+num_face_landmarks = 468
 
 # -----------------------------------
 # Angle Names for Hands
@@ -157,14 +165,6 @@ header = load_csv_header()
 # -----------------------------------
 # MediaPipe Model Loader
 # -----------------------------------
-
-# -----------------------------------
-# # Initialize Mediapipe Holistic model and Drawing utilities
-# -----------------------------------
-mp_drawing = mp.solutions.drawing_utils
-mp_holistic = mp.solutions.holistic
-
-
 @st.cache_resource
 def load_mediapipe_model():
     """
@@ -181,57 +181,19 @@ holistic_model = load_mediapipe_model()
 # -----------------------------------
 # Helper Functions
 # -----------------------------------
-# Function to calculate velocity 
-def calculate_velocity(landmarks):
-    velocities = []
-    for i in range(1, len(landmarks)):
-        velocity = np.linalg.norm(landmarks[i] - landmarks[i-1])
-        velocities.append(velocity)
-    return np.array(velocities)
-
-# Function to calculate acceleration
-def calculate_acceleration(velocities):
-    accelerations = []
-    for i in range(1, len(velocities)):
-        acceleration = np.abs(velocities[i] - velocities[i-1])
-        accelerations.append(acceleration)
-    return np.array(accelerations)
-
-# Function to identify keyframes based on velocity and acceleration
-def identify_keyframes(landmarks, velocity_threshold=0.1, acceleration_threshold=0.1):
-    velocities = calculate_velocity(landmarks)
-    accelerations = calculate_acceleration(velocities)
-    keyframes = []
-    for i in range(len(accelerations)):
-        if velocities[i] > velocity_threshold or accelerations[i] > acceleration_threshold:
-            keyframes.append(i + 1)  # +1 because acceleration index starts from 1
-    return keyframes
-
-# Function to calculate the angle between three points
 def calculate_angle(a, b, c):
+    """
+    Calculate the angle formed at point b by (a -> b -> c).
+    Returns angle in degrees (0-180).
+    """
     a = np.array(a)
     b = np.array(b)
     c = np.array(c)
-
     radians = np.arctan2(c[1] - b[1], c[0] - b[0]) - np.arctan2(a[1] - b[1], a[0] - b[0])
     angle = np.abs(radians * 180.0 / np.pi)
-
     if angle > 180.0:
         angle = 360 - angle
-
     return angle
-
-# Define the number of landmarks and angles
-num_pose_landmarks = 33
-num_hand_landmarks_per_hand = 21
-num_face_landmarks = 468
-num_angles_per_hand = 14  # Number of hand angles calculated per hand
-
-num_hands = 2  # Left and Right hands
-
-num_hand_landmarks = num_hand_landmarks_per_hand * num_hands
-num_angles = num_angles_per_hand * num_hands
-
 
 def hand_angles(hand_landmarks):
     """
@@ -355,7 +317,43 @@ def flatten_landmarks(
         face_flat
     )
 
+def calculate_velocity(landmarks):
+    """
+    Calculate velocity from landmark coordinates (frame-to-frame displacement).
+    Expected input: NxM array (N frames, M features).
+    """
+    velocities = []
+    for i in range(1, len(landmarks)):
+        velocity = np.linalg.norm(landmarks[i] - landmarks[i-1])
+        velocities.append(velocity)
+    return np.array(velocities)
 
+def calculate_acceleration(velocities):
+    """
+    Calculate acceleration from velocity (frame-to-frame change in velocity).
+    """
+    accelerations = []
+    for i in range(1, len(velocities)):
+        acceleration = np.abs(velocities[i] - velocities[i-1])
+        accelerations.append(acceleration)
+    return np.array(accelerations)
+
+def identify_keyframes(
+    landmarks,
+    velocity_threshold=0.1,
+    acceleration_threshold=0.1
+):
+    """
+    Identify keyframes based on velocity and acceleration thresholds.
+    `landmarks` is a NxM array representing frames (N) by flattened features (M).
+    """
+    velocities = calculate_velocity(landmarks)
+    accelerations = calculate_acceleration(velocities)
+    keyframes = []
+    for i in range(len(accelerations)):
+        if velocities[i] > velocity_threshold or accelerations[i] > acceleration_threshold:
+            keyframes.append(i + 1)  # +1 offset because acceleration index starts at 1
+    return keyframes
 
 # -----------------------------------
 # WebRTC Video Callback
@@ -577,17 +575,35 @@ with left_col:
                 acceleration_threshold=0.1
             )
 
+            #attempt to fix bug
+            frame_window = 5  # Number of frames before and after the keyframe
+
             for kf in keyframes:
                 if kf < len(flat_landmarks_per_frame):
                     st.session_state['sequence_id'] += 1
-                    row_data = flat_landmarks_per_frame[kf]
-                    
-                    # Retrieve the action word from session state
-                    action_class = st.session_state.get("action_word", "Unknown_Action")
+                    start_idx = max(0, kf - frame_window)
+                    end_idx = min(len(flat_landmarks_per_frame), kf + frame_window + 1)
 
-                    # Construct the row with the action word in the 'class' column
-                    row = [action_class, st.session_state['sequence_id']] + row_data.tolist()
-                    all_rows.append(row)
+                    for idx in range(start_idx, end_idx):
+                        row_data = flat_landmarks_per_frame[idx]
+                        action_class = st.session_state.get("action_word", "Unknown_Action")
+                        row = [action_class, st.session_state['sequence_id']] + row_data.tolist()
+                        all_rows.append(row)
+
+
+
+            # old version
+            # for kf in keyframes:
+            #     if kf < len(flat_landmarks_per_frame):
+            #         st.session_state['sequence_id'] += 1
+            #         row_data = flat_landmarks_per_frame[kf]
+                    
+            #         # Retrieve the action word from session state
+            #         action_class = st.session_state.get("action_word", "Unknown_Action")
+
+            #         # Construct the row with the action word in the 'class' column
+            #         row = [action_class, st.session_state['sequence_id']] + row_data.tolist()
+            #         all_rows.append(row)
 
             if all_rows:
                 # Use the user name and action in the filename.
