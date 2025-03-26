@@ -3,10 +3,12 @@ import os
 import pandas as pd
 import streamlit as st
 import matplotlib.pyplot as plt
+
 import numpy as np
 import time
 from huggingface_hub import HfApi
 import matplotlib.animation as animation
+from matplotlib.animation import PillowWriter
 
 # -----------------------------------
 # Streamlit Page Configuration
@@ -99,8 +101,8 @@ def animate_landmarks(data, save_path, frame_skip=2):
 
     ani = animation.FuncAnimation(fig, update, frames=num_frames, interval=50, blit=False)
 
-    # Save animation as GIF using a faster backend (`imagemagick`)
-    ani.save(save_path, writer='imagemagick', fps=15)
+    # Save animation as GIF using a faster backend (`PillowWriter`)
+    ani.save(save_path, writer=PillowWriter(fps=15))
     plt.close(fig)  # Close figure to prevent Streamlit from rendering a static plot
 
 if "playing" not in st.session_state:
