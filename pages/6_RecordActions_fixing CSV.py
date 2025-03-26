@@ -18,7 +18,8 @@ from datetime import datetime
 from collections import deque
 import threading
 import sys
-from huggingface_hub import Repository, hf_hub_upload
+from huggingface_hub import Repository
+from huggingface_hub import upload_file
 
 sys.path.append(str(Path(__file__).resolve().parent.parent))
 from sample_utils.download import download_file
@@ -430,30 +431,26 @@ repo = Repository(local_dir=local_repo_path, clone_from=repo_name, use_auth_toke
 
 def save_to_huggingface(csv_path):
     """
-    Uploads the CSV file directly to Hugging Face Dataset repo using hf_hub_upload.
+    Uploads the CSV file to Hugging Face Dataset repo using `upload_file`.
     """
-    from huggingface_hub import HfApi
-
-    # Get metadata from session
     timestamp = datetime.now().strftime("%Y-%m-%d_%H-%M-%S")
     uname = st.session_state.get("user_name", "unknown") or "unknown"
     action_class = st.session_state.get("action_word", "Unknown_Action")
 
-    # Construct file name for upload
-    repo_filename = f"{uname}_{action_class}_{timestamp}.csv"
+    filename = f"{uname}_{action_class}_{timestamp}.csv"
 
     try:
-        hf_hub_upload(
-            repo_id="dk23/A3CP_actions",
+        upload_file(
             path_or_fileobj=csv_path,
-            path_in_repo=repo_filename,
+            path_in_repo=filename,
+            repo_id="dk23/A3CP_actions",
             repo_type="dataset",
             token=hf_token,
         )
-        st.success(f"📤 CSV uploaded to Hugging Face dataset repo as `{repo_filename}`")
+        st.success(f"📤 Uploaded to Hugging Face as `{filename}`")
 
     except Exception as e:
-        st.error(f"🚫 Failed to upload to Hugging Face: {e}")
+        st.error(f"🚫 Failed to upload: {e}")
 
 
 
