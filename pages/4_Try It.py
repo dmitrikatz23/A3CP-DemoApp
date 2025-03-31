@@ -531,6 +531,9 @@ with right_col:
             # 👈 AFTER prediction
             debug_log(f"🟢 Raw prediction vector: {y_pred}")
             debug_log(f"🟢 Max confidence: {np.max(y_pred)}")
+            debug_log(f"🟢 Predicted class index: {gesture_index}")
+            debug_log(f"🟢 Predicted label: {gesture_name}")
+            
 
 
             # Store prediction in session state
