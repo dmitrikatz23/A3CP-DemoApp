@@ -514,7 +514,11 @@ with right_col:
 
             X_input = np.expand_dims(np.array(sequence), axis=0)
 
-            
+            # debug
+            debug_log(f"🟢 Input shape: {X_input.shape}")
+            debug_log(f"🟢 First frame sample: {X_input[0][0][:10]}")  # First 10 features of the first frame
+
+
             # Predict gesture
             y_pred = model.predict(X_input)
             gesture_index = np.argmax(y_pred, axis=1)[0]
@@ -524,7 +528,11 @@ with right_col:
                 else "No gesture detected"
             )
             
-            
+            # 👈 AFTER prediction
+            debug_log(f"🟢 Raw prediction vector: {y_pred}")
+            debug_log(f"🟢 Max confidence: {np.max(y_pred)}")
+
+
             # Store prediction in session state
             st.session_state["tryit_predicted_text"] = gesture_name
             
