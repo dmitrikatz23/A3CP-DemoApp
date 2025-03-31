@@ -30,7 +30,7 @@ from sample_utils.turn import get_ice_servers
 # -----------------------------------
 # Logging Setup
 # -----------------------------------
-DEBUG_MODE = False  # Set to True only for debugging
+DEBUG_MODE = True  # Set to True only for debugging
 
 def debug_log(message):
     if DEBUG_MODE:
