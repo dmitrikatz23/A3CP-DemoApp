@@ -419,84 +419,88 @@ def video_frame_callback(frame: av.VideoFrame) -> av.VideoFrame:
         # Inference Buffer
         inference_buffer.append(row_data)
 
-        def video_frame_callback(frame: av.VideoFrame) -> av.VideoFrame:
-            input_bgr = frame.to_ndarray(format="bgr24")
-            debug_log("📷 video_frame_callback triggered")
+def video_frame_callback(frame: av.VideoFrame) -> av.VideoFrame:
+    input_bgr = frame.to_ndarray(format="bgr24")
+    debug_log("📷 video_frame_callback triggered")
 
-            image_rgb = cv2.cvtColor(input_bgr, cv2.COLOR_BGR2RGB)
-            results = holistic_model.process(image_rgb)
-            debug_log(f"✅ Results: Pose: {results.pose_landmarks is not None}, Left hand: {results.left_hand_landmarks is not None}")
-            debug_log(f"✅ Mean pixel value: {np.mean(input_bgr)}")
+    image_rgb = cv2.cvtColor(input_bgr, cv2.COLOR_BGR2RGB)
+    results = holistic_model.process(image_rgb)
+    debug_log(f"✅ Results: Pose: {results.pose_landmarks is not None}, Left hand: {results.left_hand_landmarks is not None}")
+    debug_log(f"✅ Mean pixel value: {np.mean(input_bgr)}")
 
-            if not (results.pose_landmarks or results.left_hand_landmarks or results.right_hand_landmarks or results.face_landmarks):
-                debug_log("🚫 No landmarks returned at all — holistic may have failed")
+    if not (results.pose_landmarks or results.left_hand_landmarks or results.right_hand_landmarks or results.face_landmarks):
+        debug_log("🚫 No landmarks returned at all — holistic may have failed")
+    else:
+        debug_log("✅ Holistic returned landmarks")
+
+    annotated_image = cv2.cvtColor(image_rgb, cv2.COLOR_RGB2BGR)
+
+    # Draw landmarks
+    if results.face_landmarks:
+        mp_drawing.draw_landmarks(annotated_image, results.face_landmarks, mp_holistic.FACEMESH_TESSELATION)
+    if results.left_hand_landmarks:
+        mp_drawing.draw_landmarks(annotated_image, results.left_hand_landmarks, mp_holistic.HAND_CONNECTIONS)
+    if results.right_hand_landmarks:
+        mp_drawing.draw_landmarks(annotated_image, results.right_hand_landmarks, mp_holistic.HAND_CONNECTIONS)
+    if results.pose_landmarks:
+        mp_drawing.draw_landmarks(annotated_image, results.pose_landmarks, mp_holistic.POSE_CONNECTIONS)
+
+    # Extract and flatten landmark data
+    def extract_data(landmarks, count):
+        return [[lm.x, lm.y, lm.visibility] for lm in landmarks.landmark] if landmarks else [[0, 0, 0]] * count
+
+    pose_data = extract_data(results.pose_landmarks, num_pose_landmarks)
+    left_hand_data = extract_data(results.left_hand_landmarks, num_hand_landmarks_per_hand)
+    right_hand_data = extract_data(results.right_hand_landmarks, num_hand_landmarks_per_hand)
+    face_data = extract_data(results.face_landmarks, num_face_landmarks)
+
+    left_hand_angles = hand_angles(left_hand_data)
+    right_hand_angles = hand_angles(right_hand_data)
+
+    row_data = flatten_landmarks(
+        pose_data,
+        left_hand_data,
+        left_hand_angles,
+        right_hand_data,
+        right_hand_angles,
+        face_data
+    )
+
+    if row_data and any(row_data):
+        store_landmarks(row_data)
+
+        # Inference Buffer
+        inference_buffer.append(row_data)
+
+        if len(inference_buffer) == 30:
+            model = st.session_state.get("tryit_model")
+            encoder = st.session_state.get("tryit_encoder")
+
+            if model is None or encoder is None:
+                debug_log("⚠️ Model or encoder not loaded. Skipping prediction.")
             else:
-                debug_log("✅ Holistic returned landmarks")
+                debug_log("📦 Running prediction...")
+                sequence = list(inference_buffer)
+                X_input = np.expand_dims(np.array(sequence), axis=0)
 
-            annotated_image = cv2.cvtColor(image_rgb, cv2.COLOR_RGB2BGR)
+                y_pred = model.predict(X_input)
+                debug_log(f"🧠 Raw model output: {y_pred}")
+                debug_log(f"🔥 Prediction confidence: {np.max(y_pred)}")
 
-            # Draw landmarks
-            if results.face_landmarks:
-                mp_drawing.draw_landmarks(annotated_image, results.face_landmarks, mp_holistic.FACEMESH_TESSELATION)
-            if results.left_hand_landmarks:
-                mp_drawing.draw_landmarks(annotated_image, results.left_hand_landmarks, mp_holistic.HAND_CONNECTIONS)
-            if results.right_hand_landmarks:
-                mp_drawing.draw_landmarks(annotated_image, results.right_hand_landmarks, mp_holistic.HAND_CONNECTIONS)
-            if results.pose_landmarks:
-                mp_drawing.draw_landmarks(annotated_image, results.pose_landmarks, mp_holistic.POSE_CONNECTIONS)
+                gesture_index = np.argmax(y_pred, axis=1)[0]
+                gesture_name = (
+                    encoder.inverse_transform([gesture_index])[0]
+                    if np.max(y_pred) > 0.5
+                    else "No gesture detected"
+                )
 
-            # Extract and flatten landmark data
-            def extract_data(landmarks, count):
-                return [[lm.x, lm.y, lm.visibility] for lm in landmarks.landmark] if landmarks else [[0, 0, 0]] * count
-
-            pose_data = extract_data(results.pose_landmarks, num_pose_landmarks)
-            left_hand_data = extract_data(results.left_hand_landmarks, num_hand_landmarks_per_hand)
-            right_hand_data = extract_data(results.right_hand_landmarks, num_hand_landmarks_per_hand)
-            face_data = extract_data(results.face_landmarks, num_face_landmarks)
-
-            left_hand_angles = hand_angles(left_hand_data)
-            right_hand_angles = hand_angles(right_hand_data)
-
-            row_data = flatten_landmarks(
-                pose_data,
-                left_hand_data,
-                left_hand_angles,
-                right_hand_data,
-                right_hand_angles,
-                face_data
-            )
-
-            if row_data and any(row_data):
-                store_landmarks(row_data)
-
-                # Inference Buffer
-                inference_buffer.append(row_data)
-
-                if len(st.session_state["inference_buffer"]) == 30 and st.session_state.get("tryit_model"):
-                    model = st.session_state["tryit_model"]
-                    encoder = st.session_state["tryit_encoder"]
-
-                    sequence = list(st.session_state["inference_buffer"])
-                    X_input = np.expand_dims(np.array(sequence), axis=0)
-
-                    y_pred = model.predict(X_input)
-                    gesture_index = np.argmax(y_pred, axis=1)[0]
-                    gesture_name = (
-                        encoder.inverse_transform([gesture_index])[0]
-                        if np.max(y_pred) > 0.5
-                        else "No gesture detected"
-                    )
-
-                    debug_log(f"🔮 Prediction: {gesture_name}")
-                    st.session_state["tryit_predicted_text"] = gesture_name
-
-            return av.VideoFrame.from_ndarray(annotated_image, format="bgr24")
+                debug_log(f"🔮 Prediction: {gesture_name}")
+                st.session_state["tryit_predicted_text"] = gesture_name
 
 
+    return av.VideoFrame.from_ndarray(annotated_image, format="bgr24")       
 
-
-
-
+        
 
 
 # -----------------------------
