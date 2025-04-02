@@ -513,6 +513,10 @@ with st.sidebar:
             st.session_state["tryit_model"] = tf.keras.models.load_model(model_path)
             st.session_state["tryit_encoder"] = joblib.load(encoder_path)
             st.success("Model and encoder loaded successfully!")
+
+            debug_log(f"✅ Model loaded: {st.session_state.get('tryit_model') is not None}")
+            debug_log(f"✅ Encoder loaded: {st.session_state.get('tryit_encoder') is not None}")
+
             
             #this is debug to be deleted later
             model = tf.keras.models.load_model(model_path)
