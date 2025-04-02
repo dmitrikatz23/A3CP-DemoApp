@@ -27,6 +27,9 @@ sys.path.append(str(Path(__file__).resolve().parent.parent))
 from sample_utils.download import download_file
 from sample_utils.turn import get_ice_servers
 
+
+inference_buffer = deque(maxlen=30)
+
 # -----------------------------------
 # Logging Setup
 # -----------------------------------
@@ -362,8 +365,6 @@ def identify_keyframes(
 # WebRTC Video Callback
 # -----------------------------------
 
-if "inference_buffer" not in st.session_state:
-    st.session_state["inference_buffer"] = deque(maxlen=30)
 
 def video_frame_callback(frame: av.VideoFrame) -> av.VideoFrame:
     input_bgr = frame.to_ndarray(format="bgr24")
@@ -416,15 +417,13 @@ def video_frame_callback(frame: av.VideoFrame) -> av.VideoFrame:
         store_landmarks(row_data)
 
         # Inference Buffer
-        buffer = st.session_state.get("inference_buffer")
-        if buffer is not None:
-            buffer.append(row_data)
+        inference_buffer.append(row_data)
 
-        if len(st.session_state["inference_buffer"]) == 30 and st.session_state.get("tryit_model"):
+        if len(inference_buffer) == 30 and st.session_state.get("tryit_model"):
             model = st.session_state["tryit_model"]
             encoder = st.session_state["tryit_encoder"]
 
-            sequence = list(st.session_state["inference_buffer"])
+            sequence = list(inference_buffer)
             X_input = np.expand_dims(np.array(sequence), axis=0)
 
             y_pred = model.predict(X_input)
