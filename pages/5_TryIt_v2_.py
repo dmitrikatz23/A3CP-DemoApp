@@ -369,14 +369,16 @@ def video_frame_callback(frame: av.VideoFrame) -> av.VideoFrame:
     input_bgr = frame.to_ndarray(format="bgr24")
     debug_log("📷 video_frame_callback triggered")
 
-    # Create holistic model inside the callback to ensure it's thread-safe
+    image_rgb = cv2.cvtColor(input_bgr, cv2.COLOR_BGR2RGB)
+
     with mp.solutions.holistic.Holistic(
         min_detection_confidence=0.5,
         min_tracking_confidence=0.5,
         static_image_mode=False
     ) as holistic_model:
-        image_rgb = cv2.cvtColor(input_bgr, cv2.COLOR_BGR2RGB)
+
         results = holistic_model.process(image_rgb)
+
         annotated_image = cv2.cvtColor(image_rgb, cv2.COLOR_RGB2BGR)
 
         # Draw landmarks
@@ -389,7 +391,10 @@ def video_frame_callback(frame: av.VideoFrame) -> av.VideoFrame:
         if results.pose_landmarks:
             mp_drawing.draw_landmarks(annotated_image, results.pose_landmarks, mp_holistic.POSE_CONNECTIONS)
 
-        # Extract and flatten landmarks
+        # Extract and flatten landmark data
+        def extract_data(landmarks, count):
+            return [[lm.x, lm.y, lm.visibility] for lm in landmarks.landmark] if landmarks else [[0, 0, 0]] * count
+
         pose_data = extract_data(results.pose_landmarks, num_pose_landmarks)
         left_hand_data = extract_data(results.left_hand_landmarks, num_hand_landmarks_per_hand)
         right_hand_data = extract_data(results.right_hand_landmarks, num_hand_landmarks_per_hand)
@@ -409,12 +414,11 @@ def video_frame_callback(frame: av.VideoFrame) -> av.VideoFrame:
 
         if row_data and any(row_data):
             store_landmarks(row_data)
+
+            # Inference Buffer
             st.session_state["inference_buffer"].append(row_data)
 
-            if (
-                len(st.session_state["inference_buffer"]) == 30
-                and st.session_state.get("tryit_model")
-            ):
+            if len(st.session_state["inference_buffer"]) == 30 and st.session_state.get("tryit_model"):
                 model = st.session_state["tryit_model"]
                 encoder = st.session_state["tryit_encoder"]
 
@@ -431,10 +435,9 @@ def video_frame_callback(frame: av.VideoFrame) -> av.VideoFrame:
 
                 debug_log(f"🔮 Prediction: {gesture_name}")
                 st.session_state["tryit_predicted_text"] = gesture_name
-        else:
-            debug_log("⚠️ No valid landmarks detected. Skipping storage.")
 
     return av.VideoFrame.from_ndarray(annotated_image, format="bgr24")
+
 
 
 
