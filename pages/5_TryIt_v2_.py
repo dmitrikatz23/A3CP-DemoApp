@@ -472,38 +472,26 @@ def video_frame_callback(frame: av.VideoFrame) -> av.VideoFrame:
                 # Inference Buffer
                 inference_buffer.append(row_data)
 
-                # Check all required elements for prediction
-                if (
-                    len(inference_buffer) == 30
-                    and st.session_state.get("tryit_model")
-                    and st.session_state.get("tryit_encoder")
-                ):
+                if len(st.session_state["inference_buffer"]) == 30 and st.session_state.get("tryit_model"):
                     model = st.session_state["tryit_model"]
                     encoder = st.session_state["tryit_encoder"]
 
-                    debug_log("🧠 Running prediction on 30-frame buffer")
-                    sequence = list(inference_buffer)
+                    sequence = list(st.session_state["inference_buffer"])
                     X_input = np.expand_dims(np.array(sequence), axis=0)
 
                     y_pred = model.predict(X_input)
                     gesture_index = np.argmax(y_pred, axis=1)[0]
-                    confidence = np.max(y_pred)
-
-                    debug_log(f"🧠 Raw model output: {y_pred}")
-                    debug_log(f"🔥 Prediction confidence: {confidence}")
-
                     gesture_name = (
                         encoder.inverse_transform([gesture_index])[0]
-                        if confidence > 0.5
+                        if np.max(y_pred) > 0.5
                         else "No gesture detected"
                     )
 
                     debug_log(f"🔮 Prediction: {gesture_name}")
                     st.session_state["tryit_predicted_text"] = gesture_name
-                else:
-                    debug_log("⚠️ Model or encoder not loaded. Skipping prediction.")
 
             return av.VideoFrame.from_ndarray(annotated_image, format="bgr24")
+
 
 
 
