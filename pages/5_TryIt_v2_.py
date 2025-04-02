@@ -168,7 +168,7 @@ header = load_csv_header()
 # -----------------------------------
 # MediaPipe Model Loader (put inside loop, not thread safe)
 # -----------------------------------
-@st.cache_resource
+#@st.cache_resource
 def load_mediapipe_model():
     """
     Load and cache the MediaPipe Holistic model for optimized video processing.
@@ -371,6 +371,14 @@ def video_frame_callback(frame: av.VideoFrame) -> av.VideoFrame:
 
     image_rgb = cv2.cvtColor(input_bgr, cv2.COLOR_BGR2RGB)
     results = holistic_model.process(image_rgb)
+    debug_log(f"✅ Results: Pose: {results.pose_landmarks is not None}, Left hand: {results.left_hand_landmarks is not None}")
+    debug_log(f"✅ Mean pixel value: {np.mean(input_bgr)}")
+
+    if not (results.pose_landmarks or results.left_hand_landmarks or results.right_hand_landmarks or results.face_landmarks):
+        debug_log("🚫 No landmarks returned at all — holistic may have failed")
+    else:
+        debug_log("✅ Holistic returned landmarks")
+
     annotated_image = cv2.cvtColor(image_rgb, cv2.COLOR_RGB2BGR)
 
     # Draw landmarks
