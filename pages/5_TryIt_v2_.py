@@ -433,7 +433,7 @@ def video_frame_callback(frame: av.VideoFrame) -> av.VideoFrame:
                 y_pred = model.predict(X_input)
                 debug_log(f"🧠 Raw model output: {y_pred}")
                 debug_log(f"🔥 Prediction confidence: {np.max(y_pred)}")
-                
+
                 gesture_index = np.argmax(y_pred, axis=1)[0]
                 gesture_name = (
                     encoder.inverse_transform([gesture_index])[0]
@@ -541,7 +541,11 @@ left_col, right_col = st.columns([1, 2])
 
 with left_col:
     st.header("WebRTC Streaming")
-    if st.session_state.get("tryit_model_confirmed"):
+    if (
+        st.session_state.get("tryit_model_confirmed") and 
+        st.session_state.get("tryit_model") and 
+        st.session_state.get("tryit_encoder")
+    ):
         webrtc_streamer(
             key="tryit-stream",
             mode=WebRtcMode.SENDRECV,
@@ -550,6 +554,9 @@ with left_col:
             video_frame_callback=video_frame_callback,
             async_processing=True,
         )
+    else:
+        st.info("📦 Please confirm a model and encoder in the sidebar to start streaming.")
+
 
 with right_col:
     st.header("Predicted Gesture")
