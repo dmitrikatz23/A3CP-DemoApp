@@ -416,7 +416,9 @@ def video_frame_callback(frame: av.VideoFrame) -> av.VideoFrame:
         store_landmarks(row_data)
 
         # Inference Buffer
-        st.session_state["inference_buffer"].append(row_data)
+        buffer = st.session_state.get("inference_buffer")
+        if buffer is not None:
+            buffer.append(row_data)
 
         if len(st.session_state["inference_buffer"]) == 30 and st.session_state.get("tryit_model"):
             model = st.session_state["tryit_model"]
