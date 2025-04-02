@@ -419,23 +419,31 @@ def video_frame_callback(frame: av.VideoFrame) -> av.VideoFrame:
         # Inference Buffer
         inference_buffer.append(row_data)
 
-        if len(inference_buffer) == 30 and st.session_state.get("tryit_model"):
-            model = st.session_state["tryit_model"]
-            encoder = st.session_state["tryit_encoder"]
+        if len(inference_buffer) == 30:
+            model = st.session_state.get("tryit_model")
+            encoder = st.session_state.get("tryit_encoder")
 
-            sequence = list(inference_buffer)
-            X_input = np.expand_dims(np.array(sequence), axis=0)
+            if model is None or encoder is None:
+                debug_log("⚠️ Model or encoder not loaded. Skipping prediction.")
+            else:
+                debug_log("📦 Running prediction...")
+                sequence = list(inference_buffer)
+                X_input = np.expand_dims(np.array(sequence), axis=0)
 
-            y_pred = model.predict(X_input)
-            gesture_index = np.argmax(y_pred, axis=1)[0]
-            gesture_name = (
-                encoder.inverse_transform([gesture_index])[0]
-                if np.max(y_pred) > 0.5
-                else "No gesture detected"
-            )
+                y_pred = model.predict(X_input)
+                debug_log(f"🧠 Raw model output: {y_pred}")
+                debug_log(f"🔥 Prediction confidence: {np.max(y_pred)}")
+                
+                gesture_index = np.argmax(y_pred, axis=1)[0]
+                gesture_name = (
+                    encoder.inverse_transform([gesture_index])[0]
+                    if np.max(y_pred) > 0.5
+                    else "No gesture detected"
+                )
 
-            debug_log(f"🔮 Prediction: {gesture_name}")
-            st.session_state["tryit_predicted_text"] = gesture_name
+                debug_log(f"🔮 Prediction: {gesture_name}")
+                st.session_state["tryit_predicted_text"] = gesture_name
+
 
     return av.VideoFrame.from_ndarray(annotated_image, format="bgr24")
 
