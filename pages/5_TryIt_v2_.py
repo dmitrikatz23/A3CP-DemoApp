@@ -166,20 +166,20 @@ def load_csv_header():
 header = load_csv_header()
 
 # -----------------------------------
-# MediaPipe Model Loader
+# MediaPipe Model Loader (put inside loop, not thread safe)
 # -----------------------------------
-@st.cache_resource
-def load_mediapipe_model():
-    """
-    Load and cache the MediaPipe Holistic model for optimized video processing.
-    """
-    return mp.solutions.holistic.Holistic(
-        min_detection_confidence=0.5,
-        min_tracking_confidence=0.5,
-        static_image_mode=False
-    )
+# @st.cache_resource
+# def load_mediapipe_model():
+#     """
+#     Load and cache the MediaPipe Holistic model for optimized video processing.
+#     """
+#     return mp.solutions.holistic.Holistic(
+#         min_detection_confidence=0.5,
+#         min_tracking_confidence=0.5,
+#         static_image_mode=False
+#     )
 
-holistic_model = load_mediapipe_model()
+# holistic_model = load_mediapipe_model()
 
 # -----------------------------------
 # Helper Functions
@@ -369,60 +369,73 @@ def video_frame_callback(frame: av.VideoFrame) -> av.VideoFrame:
     input_bgr = frame.to_ndarray(format="bgr24")
     debug_log("📷 video_frame_callback triggered")
 
-    (
-        annotated_image,
-        pose_data,
-        left_hand_data,
-        left_hand_angles,
-        right_hand_data,
-        right_hand_angles,
-        face_data
-    ) = process_frame(input_bgr)
+    # Create holistic model inside the callback to ensure it's thread-safe
+    with mp.solutions.holistic.Holistic(
+        min_detection_confidence=0.5,
+        min_tracking_confidence=0.5,
+        static_image_mode=False
+    ) as holistic_model:
+        image_rgb = cv2.cvtColor(input_bgr, cv2.COLOR_BGR2RGB)
+        results = holistic_model.process(image_rgb)
+        annotated_image = cv2.cvtColor(image_rgb, cv2.COLOR_RGB2BGR)
 
-    if pose_data or left_hand_data or right_hand_data or face_data:
-        debug_log("🟢 Landmarks detected, processing...")
-    else:
-        debug_log("⚠️ No landmarks detected, skipping storage.")
+        # Draw landmarks
+        if results.face_landmarks:
+            mp_drawing.draw_landmarks(annotated_image, results.face_landmarks, mp_holistic.FACEMESH_TESSELATION)
+        if results.left_hand_landmarks:
+            mp_drawing.draw_landmarks(annotated_image, results.left_hand_landmarks, mp_holistic.HAND_CONNECTIONS)
+        if results.right_hand_landmarks:
+            mp_drawing.draw_landmarks(annotated_image, results.right_hand_landmarks, mp_holistic.HAND_CONNECTIONS)
+        if results.pose_landmarks:
+            mp_drawing.draw_landmarks(annotated_image, results.pose_landmarks, mp_holistic.POSE_CONNECTIONS)
 
-    row_data = flatten_landmarks(
-        pose_data,
-        left_hand_data,
-        left_hand_angles,
-        right_hand_data,
-        right_hand_angles,
-        face_data
-    )
+        # Extract and flatten landmarks
+        pose_data = extract_data(results.pose_landmarks, num_pose_landmarks)
+        left_hand_data = extract_data(results.left_hand_landmarks, num_hand_landmarks_per_hand)
+        right_hand_data = extract_data(results.right_hand_landmarks, num_hand_landmarks_per_hand)
+        face_data = extract_data(results.face_landmarks, num_face_landmarks)
 
-    if row_data and any(row_data):
-        store_landmarks(row_data)
+        left_hand_angles = hand_angles(left_hand_data)
+        right_hand_angles = hand_angles(right_hand_data)
 
-        # Add to inference buffer
-        st.session_state["inference_buffer"].append(row_data)
+        row_data = flatten_landmarks(
+            pose_data,
+            left_hand_data,
+            left_hand_angles,
+            right_hand_data,
+            right_hand_angles,
+            face_data
+        )
 
-        if (
-            len(st.session_state["inference_buffer"]) == 30
-            and st.session_state.get("tryit_model")
-        ):
-            model = st.session_state["tryit_model"]
-            encoder = st.session_state["tryit_encoder"]
+        if row_data and any(row_data):
+            store_landmarks(row_data)
+            st.session_state["inference_buffer"].append(row_data)
 
-            sequence = list(st.session_state["inference_buffer"])
-            X_input = np.expand_dims(np.array(sequence), axis=0)
+            if (
+                len(st.session_state["inference_buffer"]) == 30
+                and st.session_state.get("tryit_model")
+            ):
+                model = st.session_state["tryit_model"]
+                encoder = st.session_state["tryit_encoder"]
 
-            y_pred = model.predict(X_input)
-            gesture_index = np.argmax(y_pred, axis=1)[0]
-            gesture_name = (
-                encoder.inverse_transform([gesture_index])[0]
-                if np.max(y_pred) > 0.5
-                else "No gesture detected"
-            )
+                sequence = list(st.session_state["inference_buffer"])
+                X_input = np.expand_dims(np.array(sequence), axis=0)
 
-            debug_log(f"🔮 Prediction: {gesture_name}")
-            st.session_state["tryit_predicted_text"] = gesture_name
-    else:
-        debug_log("⚠️ No valid landmarks detected. Skipping storage.")
+                y_pred = model.predict(X_input)
+                gesture_index = np.argmax(y_pred, axis=1)[0]
+                gesture_name = (
+                    encoder.inverse_transform([gesture_index])[0]
+                    if np.max(y_pred) > 0.5
+                    else "No gesture detected"
+                )
+
+                debug_log(f"🔮 Prediction: {gesture_name}")
+                st.session_state["tryit_predicted_text"] = gesture_name
+        else:
+            debug_log("⚠️ No valid landmarks detected. Skipping storage.")
 
     return av.VideoFrame.from_ndarray(annotated_image, format="bgr24")
+
 
 
 
