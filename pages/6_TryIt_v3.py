@@ -35,8 +35,6 @@ inference_buffer = deque(maxlen=30)
 # -----------------------------------
 DEBUG_MODE = True  # Set to True only for debugging
 
-model_global = None
-encoder_global = None
 
 def debug_log(message):
     if DEBUG_MODE:
@@ -423,10 +421,9 @@ def video_frame_callback(frame: av.VideoFrame) -> av.VideoFrame:
         inference_buffer.append(row_data)
 
         if len(inference_buffer) == 30:
-            global model_global, encoder_global
-            model = model_global
-            encoder = encoder_global
-            debug_log(f"🧪 Global model: {model is not None}, encoder: {encoder is not None}")
+            model = st.session_state.get("tryit_model")
+            encoder = st.session_state.get("tryit_encoder")
+            debug_log(f"🧪 Session model: {model is not None}, encoder: {encoder is not None}")
 
             if model is None or encoder is None:
                 debug_log("⚠️ Model or encoder not loaded. Skipping prediction.")
@@ -498,8 +495,6 @@ def get_model_encoder_pairs():
 model_encoder_pairs = get_model_encoder_pairs()
 
 def confirm_model(chosen_model, chosen_encoder):
-    global model_global, encoder_global
-
     model_path = os.path.join(LOCAL_MODEL_DIR, chosen_model)
     encoder_path = os.path.join(LOCAL_MODEL_DIR, chosen_encoder)
 
@@ -509,15 +504,15 @@ def confirm_model(chosen_model, chosen_encoder):
         hf_hub_download(model_repo_name, chosen_encoder, local_dir=LOCAL_MODEL_DIR, repo_type="model", token=hf_token)
 
     debug_log(f"Loading model from {model_path} and encoder from {encoder_path}")
-    model_global = tf.keras.models.load_model(model_path)
-    encoder_global = joblib.load(encoder_path)
+    model = tf.keras.models.load_model(model_path)
+    encoder = joblib.load(encoder_path)
 
-    st.session_state["tryit_model"] = model_global
-    st.session_state["tryit_encoder"] = encoder_global
+    st.session_state["tryit_model"] = model
+    st.session_state["tryit_encoder"] = encoder
 
     st.success("Model and encoder loaded successfully!")
-    debug_log(f"✅ Model loaded: {model_global is not None}")
-    debug_log(f"✅ Encoder loaded: {encoder_global is not None}")
+    debug_log(f"✅ Model loaded: {model is not None}")
+    debug_log(f"✅ Encoder loaded: {encoder is not None}")
 
 with st.sidebar:
     st.subheader("Select a Model/Encoder Pair")
@@ -538,8 +533,9 @@ with st.sidebar:
 
             confirm_model(chosen_model, chosen_encoder)
 
-            model = st.session_state["tryit_model"]
-            encoder = st.session_state["tryit_encoder"]
+            with lock:
+                model = st.session_state.get("tryit_model")
+                encoder = st.session_state.get("tryit_encoder")
 
             with st.expander("🔍 Model & Encoder Debug Info"):
                 model.summary(print_fn=lambda x: st.text(x))
