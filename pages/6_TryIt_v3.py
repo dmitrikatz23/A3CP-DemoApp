@@ -368,11 +368,18 @@ def identify_keyframes(
 
 
 def video_frame_callback(frame: av.VideoFrame) -> av.VideoFrame:
+    # 🔐 Safe local copies of session state
+    model = st.session_state.get("tryit_model", None)
+    encoder = st.session_state.get("tryit_encoder", None)
+    debug_log(f"🧪 Session model: {model is not None}, encoder: {encoder is not None}")
+
     input_bgr = frame.to_ndarray(format="bgr24")
     debug_log("📷 video_frame_callback triggered")
 
     image_rgb = cv2.cvtColor(input_bgr, cv2.COLOR_BGR2RGB)
     results = holistic_model.process(image_rgb)
+
+
     debug_log(f"✅ Results: Pose: {results.pose_landmarks is not None}, Left hand: {results.left_hand_landmarks is not None}")
     debug_log(f"✅ Mean pixel value: {np.mean(input_bgr)}")
 
@@ -419,10 +426,11 @@ def video_frame_callback(frame: av.VideoFrame) -> av.VideoFrame:
 
         # Inference Buffer
         inference_buffer.append(row_data)
-
+        model = st.session_state.get("tryit_model", None)
+        encoder = st.session_state.get("tryit_encoder", None)
+        
         if len(inference_buffer) == 30:
-            model = st.session_state.get("tryit_model")
-            encoder = st.session_state.get("tryit_encoder")
+            
             debug_log(f"🧪 Session model: {model is not None}, encoder: {encoder is not None}")
 
             if model is None or encoder is None:
@@ -445,6 +453,7 @@ def video_frame_callback(frame: av.VideoFrame) -> av.VideoFrame:
 
                 debug_log(f"🔮 Prediction: {gesture_name}")
                 st.session_state["tryit_predicted_text"] = gesture_name
+            
 
 
     return av.VideoFrame.from_ndarray(annotated_image, format="bgr24")
