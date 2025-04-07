@@ -35,6 +35,9 @@ inference_buffer = deque(maxlen=30)
 # -----------------------------------
 DEBUG_MODE = True  # Set to True only for debugging
 
+model_global = None
+encoder_global = None
+
 def debug_log(message):
     if DEBUG_MODE:
         logging.info(message)
@@ -420,8 +423,10 @@ def video_frame_callback(frame: av.VideoFrame) -> av.VideoFrame:
         inference_buffer.append(row_data)
 
         if len(inference_buffer) == 30:
-            model = st.session_state.get("tryit_model")
-            encoder = st.session_state.get("tryit_encoder")
+            global model_global, encoder_global
+            model = model_global
+            encoder = encoder_global
+            debug_log(f"🧪 Global model: {model is not None}, encoder: {encoder is not None}")
 
             if model is None or encoder is None:
                 debug_log("⚠️ Model or encoder not loaded. Skipping prediction.")
@@ -518,8 +523,11 @@ with st.sidebar:
                 hf_hub_download(model_repo_name, chosen_encoder, local_dir=LOCAL_MODEL_DIR, repo_type="model", token=hf_token)
 
             # Load Model & Encoder
-            st.session_state["tryit_model"] = tf.keras.models.load_model(model_path)
-            st.session_state["tryit_encoder"] = joblib.load(encoder_path)
+            model_global = tf.keras.models.load_model(model_path)
+            encoder_global = joblib.load(encoder_path)
+            st.session_state["tryit_model"] = model_global
+            st.session_state["tryit_encoder"] = encoder_global
+            
             st.success("Model and encoder loaded successfully!")
 
             debug_log(f"✅ Model loaded: {st.session_state.get('tryit_model') is not None}")
