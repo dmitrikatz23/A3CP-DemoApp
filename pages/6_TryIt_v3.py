@@ -497,6 +497,28 @@ def get_model_encoder_pairs():
 
 model_encoder_pairs = get_model_encoder_pairs()
 
+def confirm_model(chosen_model, chosen_encoder):
+    global model_global, encoder_global
+
+    model_path = os.path.join(LOCAL_MODEL_DIR, chosen_model)
+    encoder_path = os.path.join(LOCAL_MODEL_DIR, chosen_encoder)
+
+    if not os.path.exists(model_path):
+        hf_hub_download(model_repo_name, chosen_model, local_dir=LOCAL_MODEL_DIR, repo_type="model", token=hf_token)
+    if not os.path.exists(encoder_path):
+        hf_hub_download(model_repo_name, chosen_encoder, local_dir=LOCAL_MODEL_DIR, repo_type="model", token=hf_token)
+
+    debug_log(f"Loading model from {model_path} and encoder from {encoder_path}")
+    model_global = tf.keras.models.load_model(model_path)
+    encoder_global = joblib.load(encoder_path)
+
+    st.session_state["tryit_model"] = model_global
+    st.session_state["tryit_encoder"] = encoder_global
+
+    st.success("Model and encoder loaded successfully!")
+    debug_log(f"✅ Model loaded: {model_global is not None}")
+    debug_log(f"✅ Encoder loaded: {encoder_global is not None}")
+
 with st.sidebar:
     st.subheader("Select a Model/Encoder Pair")
     if not model_encoder_pairs:
@@ -514,33 +536,20 @@ with st.sidebar:
             st.session_state["tryit_selected_pair"] = pair_options[selected_label]
             st.session_state["tryit_model_confirmed"] = True
 
-            model_path = os.path.join(LOCAL_MODEL_DIR, chosen_model)
-            encoder_path = os.path.join(LOCAL_MODEL_DIR, chosen_encoder)
+            confirm_model(chosen_model, chosen_encoder)
 
-            if not os.path.exists(model_path):
-                hf_hub_download(model_repo_name, chosen_model, local_dir=LOCAL_MODEL_DIR, repo_type="model", token=hf_token)
-            if not os.path.exists(encoder_path):
-                hf_hub_download(model_repo_name, chosen_encoder, local_dir=LOCAL_MODEL_DIR, repo_type="model", token=hf_token)
+            model = st.session_state["tryit_model"]
+            encoder = st.session_state["tryit_encoder"]
 
-            # Load Model & Encoder
-            model_global = tf.keras.models.load_model(model_path)
-            encoder_global = joblib.load(encoder_path)
-            st.session_state["tryit_model"] = model_global
-            st.session_state["tryit_encoder"] = encoder_global
+            with st.expander("🔍 Model & Encoder Debug Info"):
+                model.summary(print_fn=lambda x: st.text(x))
+                st.write("Encoder classes:", encoder.classes_)
             
             st.success("Model and encoder loaded successfully!")
 
             debug_log(f"✅ Model loaded: {st.session_state.get('tryit_model') is not None}")
             debug_log(f"✅ Encoder loaded: {st.session_state.get('tryit_encoder') is not None}")
 
-            
-            #this is debug to be deleted later
-            model = tf.keras.models.load_model(model_path)
-            encoder = joblib.load(encoder_path)
-
-            with st.expander("🔍 Model & Encoder Debug Info"):
-                model.summary(print_fn=lambda x: st.text(x))
-                st.write("Encoder classes:", encoder.classes_)
 
 # -----------------------------
 # Main Layout
