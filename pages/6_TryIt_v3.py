@@ -553,7 +553,7 @@ with st.sidebar:
 left_col, right_col = st.columns([1, 2])
 
 with left_col:
-    st.header("WebRTC Streaming")
+    st.header("WebRTC Streamer")
     if (
         st.session_state.get("tryit_model_confirmed") and 
         st.session_state.get("tryit_model") and 
