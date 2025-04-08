@@ -366,20 +366,12 @@ def identify_keyframes(
 # WebRTC Video Callback
 # -----------------------------------
 
-
 def video_frame_callback(frame: av.VideoFrame) -> av.VideoFrame:
-    # 🔐 Safe local copies of session state
-    model = st.session_state.get("tryit_model", None)
-    encoder = st.session_state.get("tryit_encoder", None)
-    debug_log(f"🧪 Session model: {model is not None}, encoder: {encoder is not None}")
-
     input_bgr = frame.to_ndarray(format="bgr24")
     debug_log("📷 video_frame_callback triggered")
 
     image_rgb = cv2.cvtColor(input_bgr, cv2.COLOR_BGR2RGB)
     results = holistic_model.process(image_rgb)
-
-
     debug_log(f"✅ Results: Pose: {results.pose_landmarks is not None}, Left hand: {results.left_hand_landmarks is not None}")
     debug_log(f"✅ Mean pixel value: {np.mean(input_bgr)}")
 
@@ -424,39 +416,9 @@ def video_frame_callback(frame: av.VideoFrame) -> av.VideoFrame:
     if row_data and any(row_data):
         store_landmarks(row_data)
 
-        # Inference Buffer
-        inference_buffer.append(row_data)
-        model = st.session_state.get("tryit_model", None)
-        encoder = st.session_state.get("tryit_encoder", None)
-        
-        if len(inference_buffer) == 30:
-            
-            debug_log(f"🧪 Session model: {model is not None}, encoder: {encoder is not None}")
-
-            if model is None or encoder is None:
-                debug_log("⚠️ Model or encoder not loaded. Skipping prediction.")
-            else:
-                debug_log("📦 Running prediction...")
-                sequence = list(inference_buffer)
-                X_input = np.expand_dims(np.array(sequence), axis=0)
-
-                y_pred = model.predict(X_input)
-                debug_log(f"🧠 Raw model output: {y_pred}")
-                debug_log(f"🔥 Prediction confidence: {np.max(y_pred)}")
-
-                gesture_index = np.argmax(y_pred, axis=1)[0]
-                gesture_name = (
-                    encoder.inverse_transform([gesture_index])[0]
-                    if np.max(y_pred) > 0.5
-                    else "No gesture detected"
-                )
-
-                debug_log(f"🔮 Prediction: {gesture_name}")
-                st.session_state["tryit_predicted_text"] = gesture_name
-            
-
-
     return av.VideoFrame.from_ndarray(annotated_image, format="bgr24")
+
+
 
 
 
@@ -583,6 +545,37 @@ with left_col:
 with right_col:
     st.header("Predicted Gesture")
     prediction_placeholder = st.empty()
-    prediction_placeholder.write(f"**Prediction:** {st.session_state.get('tryit_predicted_text', 'Waiting...')}")
-    
-            
+
+    while True:
+        if (
+            st.session_state.get("tryit_model_confirmed") and
+            st.session_state.get("tryit_model") and
+            st.session_state.get("tryit_encoder")
+        ):
+            model = st.session_state["tryit_model"]
+            encoder = st.session_state["tryit_encoder"]
+            queue_snapshot = get_landmark_queue()
+
+            if len(queue_snapshot) >= 30:
+                sequence = queue_snapshot[-30:]
+                if len(sequence) < 30:
+                    padding = [[-1.0] * len(sequence[0])] * (30 - len(sequence))
+                    sequence += padding
+
+                X_input = np.expand_dims(np.array(sequence), axis=0)
+
+                y_pred = model.predict(X_input)
+                gesture_index = np.argmax(y_pred, axis=1)[0]
+                gesture_name = (
+                    encoder.inverse_transform([gesture_index])[0]
+                    if np.max(y_pred) > 0.5
+                    else "No gesture detected"
+                )
+
+                debug_log(f"🧠 Raw model output: {y_pred}")
+                debug_log(f"🔮 Prediction: {gesture_name}")
+
+                st.session_state["tryit_predicted_text"] = gesture_name
+                prediction_placeholder.write(f"**Prediction:** {gesture_name}")
+
+        time.sleep(0.5)  # Control update rate
